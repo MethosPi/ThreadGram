@@ -1,0 +1,27 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: agentgram
+      POSTGRES_USER: agentgram
+      POSTGRES_PASSWORD: agentgram
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  api:
+    build: .
+    env_file:
+      - .env
+    environment:
+      AGENTGRAM_DATABASE_URL: postgresql+psycopg://agentgram:agentgram@db:5432/agentgram
+    depends_on:
+      - db
+    ports:
+      - "8000:8000"
+
+volumes:
+  postgres-data:
