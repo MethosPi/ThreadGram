@@ -60,6 +60,48 @@ body {
   align-self: stretch;
 }
 
+.hero-steps {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.hero-highlight,
+.hero-step {
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.hero-step {
+  display: grid;
+  grid-template-columns: 38px 1fr;
+  gap: 12px;
+  padding: 14px;
+}
+
+.hero-step span {
+  display: inline-grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  background: rgba(15, 124, 103, 0.14);
+  color: var(--primary-strong);
+  font-weight: 700;
+}
+
+.hero-step strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.hero-step p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
 .eyebrow {
   margin: 0 0 16px;
   font-size: 0.8rem;
@@ -88,6 +130,29 @@ h1 {
   line-height: 1.6;
 }
 
+.hero-highlights {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 26px;
+}
+
+.hero-highlight {
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+}
+
+.hero-highlight strong {
+  font-size: 0.95rem;
+}
+
+.hero-highlight span {
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
 .dashboard {
   display: grid;
   grid-template-columns: repeat(12, 1fr);
@@ -102,6 +167,7 @@ h1 {
 .workspace-card,
 .detail-card,
 .key-card,
+.human-card,
 .snippets-card,
 .threads-card {
   grid-column: span 12;
@@ -120,6 +186,10 @@ h1 {
 }
 
 .key-card {
+  grid-column: span 4;
+}
+
+.human-card {
   grid-column: span 4;
 }
 
@@ -173,6 +243,11 @@ textarea {
   background: rgba(255, 255, 255, 0.78);
   color: var(--ink);
   font-size: 0.98rem;
+}
+
+textarea {
+  resize: vertical;
+  min-height: 132px;
 }
 
 input:focus,
@@ -244,7 +319,8 @@ textarea:focus {
 .snippet-card,
 .secret-panel,
 .key-item,
-.message-card {
+.message-card,
+.reply-shell {
   border: 1px solid var(--line);
   border-radius: 20px;
   background: var(--panel-strong);
@@ -315,6 +391,24 @@ pre {
   margin-bottom: 6px;
 }
 
+.thread-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.thread-unread-badge {
+  min-width: 28px;
+  padding: 6px 9px;
+  border-radius: 999px;
+  background: rgba(204, 95, 47, 0.14);
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-align: center;
+}
+
 .thread-detail {
   min-height: 240px;
   padding: 18px;
@@ -342,6 +436,14 @@ pre {
   font-size: 0.85rem;
 }
 
+.reply-shell {
+  padding: 16px;
+}
+
+.reply-shell h4 {
+  margin: 0 0 8px;
+}
+
 .hidden {
   display: none;
 }
@@ -351,10 +453,15 @@ pre {
     grid-template-columns: 1fr;
   }
 
+  .hero-highlights {
+    grid-template-columns: 1fr;
+  }
+
   .auth-card,
   .workspace-card,
   .detail-card,
   .key-card,
+  .human-card,
   .snippets-card {
     grid-column: span 12;
   }

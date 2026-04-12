@@ -8,14 +8,25 @@ from mcp.client.streamable_http import streamable_http_client
 from tests.helpers import create_agent_key, create_workspace, login_test_user
 
 
-async def call_tool(app, agent_key: str, tool_name: str, arguments: dict | None = None):
+async def call_tool(
+    app,
+    agent_key: str | None,
+    tool_name: str,
+    arguments: dict | None = None,
+    *,
+    mcp_url: str = "http://testserver/mcp",
+    headers: dict[str, str] | None = None,
+):
     transport = httpx.ASGITransport(app=app)
+    request_headers = dict(headers or {})
+    if agent_key:
+        request_headers.setdefault("Authorization", f"Bearer {agent_key}")
     async with httpx.AsyncClient(
         transport=transport,
         base_url="http://testserver",
-        headers={"Authorization": f"Bearer {agent_key}"},
+        headers=request_headers,
     ) as async_client:
-        async with streamable_http_client("http://testserver/mcp", http_client=async_client) as (
+        async with streamable_http_client(mcp_url, http_client=async_client) as (
             read_stream,
             write_stream,
             _,
@@ -76,7 +87,7 @@ async def test_workspace_isolation_for_agent_keys(app, client):
     )
 
     agents_a = await call_tool(app, key_a["secret"], "list_agents")
-    assert [agent["agent_name"] for agent in agents_a["agents"]] == ["codex-main"]
+    assert [agent["agent_name"] for agent in agents_a["agents"]] == ["codex-main", "human"]
 
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(

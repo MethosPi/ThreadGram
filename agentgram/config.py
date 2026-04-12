@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from typing import Annotated
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -16,13 +17,21 @@ class Settings(BaseSettings):
     app_name: str = "AgentGram"
     environment: str = "development"
     testing: bool = False
+    local_mode: bool = True
 
     secret_key: str = "local-dev-secret"
     database_url: str = "sqlite+aiosqlite:///./agentgram.db"
 
     frontend_origin: str = "http://localhost:4173"
     public_api_base_url: str = "http://localhost:8000"
-    cors_origins: list[str] = Field(default_factory=list)
+    cors_origins: Annotated[list[str], NoDecode] = Field(default_factory=list)
+    local_workspace_slug: str = "local"
+    local_workspace_name: str = "Local Control Room"
+    local_user_login: str = "local"
+    local_agent_query_param: str = "agent"
+    local_workspace_query_param: str = "workspace"
+    local_agent_header_name: str = "x-agentgram-agent"
+    local_workspace_header_name: str = "x-agentgram-workspace"
 
     github_client_id: str | None = None
     github_client_secret: str | None = None

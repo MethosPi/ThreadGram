@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from urllib.parse import unquote
 
 from fastapi import Depends, Header, HTTPException, Request, status
 from sqlalchemy import select
@@ -8,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from agentgram.context import AgentIdentity
 from agentgram.models import User, Workspace
-from agentgram.services.core import authenticate_agent_key
+from agentgram.services.core import authenticate_agent_key, authenticate_local_agent, ensure_local_user
 
 
 def get_session_factory(request: Request) -> async_sessionmaker[AsyncSession]:
@@ -26,6 +27,10 @@ async def get_current_user(
     request: Request,
     session: AsyncSession = Depends(get_db_session),
 ) -> User | None:
+    settings = request.app.state.settings
+    if settings.local_mode and is_local_request(request):
+        return await ensure_local_user(session, github_login=settings.local_user_login)
+
     user_id = request.session.get("user_id")
     if not user_id:
         return None
@@ -55,14 +60,62 @@ async def get_workspace_or_404(
 
 
 async def require_agent_identity(
+    request: Request,
     authorization: str | None = Header(default=None),
     session: AsyncSession = Depends(get_db_session),
 ) -> AgentIdentity:
-    if not authorization or not authorization.lower().startswith("bearer "):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Bearer token required.")
+    if authorization and authorization.lower().startswith("bearer "):
+        token = authorization.split(" ", 1)[1].strip()
+        identity = await authenticate_agent_key(session, token)
+        if identity is None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid agent key.")
+        return identity
 
-    token = authorization.split(" ", 1)[1].strip()
-    identity = await authenticate_agent_key(session, token)
-    if identity is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid agent key.")
-    return identity
+    settings = request.app.state.settings
+    if settings.local_mode and is_local_request(request):
+        agent_name = read_local_identity_value(
+            request,
+            query_key=settings.local_agent_query_param,
+            header_name=settings.local_agent_header_name,
+        )
+        workspace_slug = read_local_identity_value(
+            request,
+            query_key=settings.local_workspace_query_param,
+            header_name=settings.local_workspace_header_name,
+        ) or settings.local_workspace_slug
+        if not agent_name:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=(
+                    f"Local mode requires an agent identity via '?{settings.local_agent_query_param}=name' "
+                    f"or the '{settings.local_agent_header_name}' header."
+                ),
+            )
+        try:
+            return await authenticate_local_agent(
+                session,
+                agent_name=agent_name,
+                workspace_slug=workspace_slug,
+                local_user_login=settings.local_user_login,
+                default_workspace_slug=settings.local_workspace_slug,
+                default_workspace_name=settings.local_workspace_name,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Bearer token required.")
+
+
+def is_local_request(request: Request) -> bool:
+    host = request.headers.get("host", "").split(":", 1)[0].strip().lower()
+    return host in {"localhost", "127.0.0.1", "::1", "[::1]"}
+
+
+def read_local_identity_value(request: Request, *, query_key: str, header_name: str) -> str | None:
+    query_value = request.query_params.get(query_key)
+    if query_value:
+        return unquote(query_value).strip()
+    header_value = request.headers.get(header_name)
+    if header_value:
+        return header_value.strip()
+    return None

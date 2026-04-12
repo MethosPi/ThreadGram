@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 from fastapi.responses import JSONResponse
 from mcp.server.fastmcp import FastMCP
@@ -14,6 +14,7 @@ from agentgram.context import AgentIdentity, get_current_agent, reset_current_ag
 from agentgram.schemas import AgentsResponse, InboxResponse, MarkThreadReadResult, SendMessageResult, ThreadDetail, WhoAmIOut
 from agentgram.services.core import (
     authenticate_agent_key,
+    authenticate_local_agent,
     fetch_inbox as fetch_inbox_service,
     get_thread as get_thread_service,
     list_agents as list_agents_service,
@@ -60,7 +61,7 @@ def create_mcp_server(session_factory, settings: Settings) -> FastMCP:
     mcp = FastMCP(
         settings.app_name,
         instructions=(
-            "AgentGram gives agents a shared Telegram-style inbox over MCP while human operators manage workspaces and keys from the web portal."
+            "AgentGram gives agents a shared Telegram-style inbox over MCP while human operators manage conversations from the local web portal."
         ),
         streamable_http_path="/mcp",
         stateless_http=True,
@@ -113,6 +114,7 @@ def create_mcp_server(session_factory, settings: Settings) -> FastMCP:
                 body=body,
                 thread_id=thread_id,
                 subject=subject,
+                allow_unknown_recipients=settings.local_mode,
             )
 
     @mcp.tool()
@@ -140,15 +142,52 @@ class MCPAgentAuthApp:
 
         headers = Headers(scope=scope)
         authorization = headers.get("authorization")
-        if not authorization or not authorization.lower().startswith("bearer "):
-            await JSONResponse({"detail": "Bearer token required."}, status_code=401)(scope, receive, send)
-            return
+        settings = scope["app"].state.settings
+        host = headers.get("host", "").split(":", 1)[0].strip().lower()
+        is_local_host = host in {"localhost", "127.0.0.1", "::1", "[::1]"}
 
-        presented_key = authorization.split(" ", 1)[1].strip()
-        async with self.session_factory() as session:
-            identity: AgentIdentity | None = await authenticate_agent_key(session, presented_key)
-        if identity is None:
-            await JSONResponse({"detail": "Invalid agent key."}, status_code=401)(scope, receive, send)
+        identity: AgentIdentity | None = None
+        if authorization and authorization.lower().startswith("bearer "):
+            presented_key = authorization.split(" ", 1)[1].strip()
+            async with self.session_factory() as session:
+                identity = await authenticate_agent_key(session, presented_key)
+            if identity is None:
+                await JSONResponse({"detail": "Invalid agent key."}, status_code=401)(scope, receive, send)
+                return
+        elif settings.local_mode and is_local_host:
+            query_params = parse_qs(scope.get("query_string", b"").decode("utf-8", errors="ignore"))
+            local_agent = query_params.get(settings.local_agent_query_param, [None])[0] or headers.get(
+                settings.local_agent_header_name
+            )
+            local_workspace = query_params.get(settings.local_workspace_query_param, [None])[0] or headers.get(
+                settings.local_workspace_header_name
+            )
+            if not local_agent:
+                await JSONResponse(
+                    {
+                        "detail": (
+                            f"Local mode requires '?{settings.local_agent_query_param}=name' or the "
+                            f"'{settings.local_agent_header_name}' header."
+                        )
+                    },
+                    status_code=401,
+                )(scope, receive, send)
+                return
+            try:
+                async with self.session_factory() as session:
+                    identity = await authenticate_local_agent(
+                        session,
+                        agent_name=local_agent,
+                        workspace_slug=local_workspace or settings.local_workspace_slug,
+                        local_user_login=settings.local_user_login,
+                        default_workspace_slug=settings.local_workspace_slug,
+                        default_workspace_name=settings.local_workspace_name,
+                    )
+            except ValueError as exc:
+                await JSONResponse({"detail": str(exc)}, status_code=400)(scope, receive, send)
+                return
+        else:
+            await JSONResponse({"detail": "Bearer token required."}, status_code=401)(scope, receive, send)
             return
 
         token = set_current_agent(identity)

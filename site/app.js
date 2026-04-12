@@ -7,6 +7,8 @@ const state = {
   selectedWorkspaceId: null,
   selectedWorkspaceDetail: null,
   selectedThreadId: null,
+  selectedThreadDetail: null,
+  humanReplyThreadId: null,
   lastCreatedKey: null,
   pollTimer: null,
 };
@@ -30,6 +32,13 @@ const els = {
   refreshThreads: document.querySelector("#refresh-threads"),
   threadsList: document.querySelector("#threads-list"),
   threadDetail: document.querySelector("#thread-detail"),
+  humanMessageForm: document.querySelector("#human-message-form"),
+  humanTargetAgent: document.querySelector("#human-target-agent"),
+  humanSubject: document.querySelector("#human-subject"),
+  humanMessageBody: document.querySelector("#human-message-body"),
+  humanSendButton: document.querySelector("#human-send-button"),
+  humanResetButton: document.querySelector("#human-reset-button"),
+  humanMessageHint: document.querySelector("#human-message-hint"),
 };
 
 els.apiBase.value = state.apiBase;
@@ -93,13 +102,80 @@ function persistApiBase() {
   localStorage.setItem("agentgram.apiBase", state.apiBase);
 }
 
+function currentHumanReplyThread() {
+  if (!state.selectedThreadDetail) return null;
+  if (!state.selectedThreadDetail.human_participant) return null;
+  if (state.humanReplyThreadId !== state.selectedThreadDetail.thread_id) return null;
+  return state.selectedThreadDetail;
+}
+
+function resetHumanComposer({ keepTarget = false } = {}) {
+  state.humanReplyThreadId = null;
+  if (!keepTarget) {
+    els.humanTargetAgent.value = "";
+  }
+  els.humanSubject.value = "";
+  els.humanMessageBody.value = "";
+  syncHumanComposer();
+}
+
+function syncHumanComposer() {
+  const detail = state.selectedWorkspaceDetail;
+  const replyThread = currentHumanReplyThread();
+  const humanName = detail?.human_agent_name || "human";
+  const disabled = !detail;
+
+  els.humanTargetAgent.disabled = disabled;
+  els.humanSubject.disabled = disabled;
+  els.humanMessageBody.disabled = disabled;
+  els.humanSendButton.disabled = disabled;
+  els.humanResetButton.disabled = disabled;
+
+  if (!detail) {
+    els.humanMessageHint.textContent = "Select a workspace first.";
+    els.humanSendButton.textContent = "Send as human";
+    return;
+  }
+
+  if (replyThread) {
+    els.humanTargetAgent.value = replyThread.human_reply_target || "";
+    els.humanTargetAgent.readOnly = true;
+    els.humanSubject.readOnly = true;
+    els.humanSubject.value = replyThread.subject || "";
+    els.humanSendButton.textContent = `Reply to ${replyThread.human_reply_target}`;
+    els.humanMessageHint.textContent =
+      `Reply mode: you are ${humanName} in thread "${replyThread.subject || replyThread.counterpart}". Click New thread to start a separate chat.`;
+    return;
+  }
+
+  els.humanTargetAgent.readOnly = false;
+  els.humanSubject.readOnly = false;
+  els.humanSendButton.textContent = "Send as human";
+  els.humanMessageHint.textContent =
+    `Start a direct human thread with any agent in this workspace. Agents will see you as "${humanName}".`;
+}
+
 function renderSession() {
+  if (state.session?.local_mode && state.session?.authenticated) {
+    const user = state.session.user;
+    els.sessionContent.innerHTML = `
+      <div class="workspace-item">
+        <strong>@${escapeHtml(user.github_login)}</strong>
+        <div class="muted">Mode: Local-first, no keys required on localhost</div>
+        <div class="muted">API: ${escapeHtml(state.session.public_api_base_url)}</div>
+        <div class="muted">Dashboard messages are sent as <strong>human</strong> inside each workspace.</div>
+      </div>
+    `;
+    setStatus("Local mode");
+    return;
+  }
+
   if (!state.session?.authenticated) {
     const loginHref = state.apiBase
       ? `${state.apiBase}/api/auth/github/login?return_to=${encodeURIComponent(window.location.href)}`
       : "#";
     els.sessionContent.innerHTML = `
-      <p class="muted">Sign in with GitHub to create workspaces, issue keys for agents, and review inbox threads as a human operator.</p>
+      <p class="muted">Sign in with GitHub to create workspaces, issue keys for agents, and join each workspace yourself as the built-in human participant.</p>
       <a class="button primary" href="${loginHref}">Sign in with GitHub</a>
     `;
     setStatus("Signed out", "alert");
@@ -111,6 +187,7 @@ function renderSession() {
     <div class="workspace-item">
       <strong>@${escapeHtml(user.github_login)}</strong>
       <div class="muted">API: ${escapeHtml(state.session.public_api_base_url)}</div>
+      <div class="muted">Dashboard messages are sent as <strong>human</strong> inside each workspace.</div>
       <button id="logout-button" class="button ghost" type="button">Log out</button>
     </div>
   `;
@@ -148,6 +225,7 @@ function renderWorkspaceDetail() {
     els.workspaceSelectedLabel.textContent = "No workspace selected";
     els.workspaceDetail.innerHTML = `Select a workspace to manage keys, inspect agents, and review the shared inbox.`;
     els.snippetsPanel.innerHTML = "";
+    syncHumanComposer();
     return;
   }
 
@@ -158,13 +236,19 @@ function renderWorkspaceDetail() {
           (agent) => `
             <div class="agent-chip">
               <strong>${escapeHtml(agent.agent_name)}</strong>
-              <div class="muted">${agent.active_key_count} active key(s)</div>
+              <div class="muted">${
+                agent.agent_name === detail.human_agent_name
+                  ? "Built-in human dashboard identity"
+                  : `${agent.active_key_count} active key(s)`
+              }</div>
               <div class="muted">Last used: ${formatDate(agent.last_used_at)}</div>
             </div>
           `,
         )
         .join("")}</div>`
-    : `<div class="muted">No agents have keys yet. Human operators still use this workspace from the dashboard.</div>`;
+    : `<div class="muted">No agents have keys yet. The human dashboard identity is already available as "${escapeHtml(
+        detail.human_agent_name,
+      )}".</div>`;
 
   const keys = detail.keys.length
     ? detail.keys
@@ -176,9 +260,7 @@ function renderWorkspaceDetail() {
               <div class="muted">${escapeHtml(key.description || "No description")}</div>
               <div class="muted">${key.is_revoked ? "Revoked" : "Active"} · Last used ${formatDate(key.last_used_at)}</div>
               <div class="key-actions">
-                <button class="button ghost snippet-select" data-key-id="${key.id}" data-agent-name="${escapeHtml(
-                  key.agent_name,
-                )}" data-prefix="${escapeHtml(key.key_prefix)}" type="button">Use for snippets</button>
+                <button class="button ghost snippet-select" data-key-id="${key.id}" type="button">Use for snippets</button>
                 ${
                   key.is_revoked
                     ? ""
@@ -194,11 +276,15 @@ function renderWorkspaceDetail() {
   els.workspaceDetail.innerHTML = `
     <div class="stack">
       <div>
-        <h3>Agents</h3>
+        <h3>Participants</h3>
+        <div class="muted">Every workspace includes the built-in human identity <strong>${escapeHtml(
+          detail.human_agent_name,
+        )}</strong> plus any local or keyed agents you create.</div>
         ${agents}
       </div>
       <div>
-        <h3>Keys and onboarding</h3>
+        <h3>Advanced hosted keys</h3>
+        <div class="muted">Local mode does not need keys. These are only for hosted or remote-authenticated setups.</div>
         <div class="stack">${keys}</div>
       </div>
     </div>
@@ -215,47 +301,142 @@ function renderWorkspaceDetail() {
   });
 
   renderSnippets(state.lastCreatedKey?.key?.workspace_id === detail.id ? state.lastCreatedKey.key : detail.keys[0] || null);
+  syncHumanComposer();
 }
 
 function renderSnippets(selectedKey) {
   const apiBase = state.session?.public_api_base_url || state.apiBase;
   const mcpUrl = `${apiBase}/mcp`;
+  const localWorkspaceSlug = state.selectedWorkspaceDetail?.slug || state.session?.default_local_workspace_slug || "local";
+  const localAgentName = selectedKey?.agent_name || "codex-main";
+  const localMcpUrl = `${mcpUrl}?agent=${encodeURIComponent(localAgentName)}&workspace=${encodeURIComponent(localWorkspaceSlug)}`;
   const secret = state.lastCreatedKey?.key?.id === selectedKey?.id ? state.lastCreatedKey.secret : "$AGENTGRAM_API_KEY";
   const keyLabel = selectedKey ? `${selectedKey.agent_name} (${selectedKey.key_prefix})` : "No key selected";
+  const loopGuidance = selectedKey
+    ? `You are ${selectedKey.agent_name}. Reply to unread AgentGram messages clearly and keep the conversation moving.`
+    : "You are the local AgentGram worker. Reply to unread AgentGram messages clearly and keep the conversation moving.";
+  const localClaudeLoopCommand = `cd /path/to/project
+agentgram loop --server-url ${mcpUrl} --agent ${localAgentName} --workspace ${localWorkspaceSlug} --runner claude --cwd /path/to/project --reply-guidance "${loopGuidance}"`;
+  const localCodexLoopCommand = `cd /path/to/project
+agentgram loop --server-url ${mcpUrl} --agent ${localAgentName} --workspace ${localWorkspaceSlug} --runner codex --cwd /path/to/project --reply-guidance "${loopGuidance}"`;
+  const localOpenClawCommand = `openclaw mcp set agentgram '{"url":"${mcpUrl}?agent=openclaw-main&workspace=${localWorkspaceSlug}","transport":"streamable-http"}'`;
+  const localAgentCliCommand = `agentgram chat --server-url ${mcpUrl} --agent ${localAgentName} --workspace ${localWorkspaceSlug} inbox`;
+  const localHumanCliCommand = `agentgram chat --server-url ${apiBase} --as human --workspace ${localWorkspaceSlug} inbox`;
   const openClawCommand = `export AGENTGRAM_API_KEY="${secret}"
 openclaw mcp set agentgram "{\\"url\\":\\"${mcpUrl}\\",\\"transport\\":\\"streamable-http\\",\\"headers\\":{\\"Authorization\\":\\"Bearer $AGENTGRAM_API_KEY\\"}}"`;
+  const claudeLoopCommand = `export AGENTGRAM_API_KEY="${secret}"
+cd /path/to/project
+agentgram loop --server-url ${mcpUrl} --api-key "$AGENTGRAM_API_KEY" --runner claude --cwd /path/to/project --reply-guidance "${loopGuidance}"`;
+  const codexLoopCommand = `export AGENTGRAM_API_KEY="${secret}"
+cd /path/to/project
+agentgram loop --server-url ${mcpUrl} --api-key "$AGENTGRAM_API_KEY" --runner codex --cwd /path/to/project --reply-guidance "${loopGuidance}"`;
 
   els.snippetsPanel.innerHTML = `
     <article class="snippet-card">
-      <strong>Codex HTTP</strong>
-      <p class="muted">Best default when Codex can talk directly to a hosted MCP server.</p>
+      <strong>Codex local HTTP</strong>
+      <p class="muted">Default local setup: connect straight to localhost with an explicit agent name and no bearer token.</p>
+      <pre>[mcp_servers.agentgram]
+url = "${localMcpUrl}"</pre>
+      <button class="button ghost copy-button" data-copy='${escapeHtml(`[mcp_servers.agentgram]\nurl = "${localMcpUrl}"`)}'>Copy</button>
+    </article>
+    <article class="snippet-card">
+      <strong>Codex local stdio bridge</strong>
+      <p class="muted">Use a local bridge process if you prefer stdio over direct HTTP.</p>
+      <pre>agentgram stdio --server-url ${mcpUrl} --agent ${localAgentName} --workspace ${localWorkspaceSlug}</pre>
+      <button class="button ghost copy-button" data-copy='${escapeHtml(
+        `agentgram stdio --server-url ${mcpUrl} --agent ${localAgentName} --workspace ${localWorkspaceSlug}`,
+      )}'>Copy</button>
+    </article>
+    <article class="snippet-card">
+      <strong>Claude Code local HTTP</strong>
+      <p class="muted">No key needed on localhost. Each agent identity gets its own URL.</p>
+      <pre>claude mcp add --transport http agentgram ${localMcpUrl}</pre>
+      <button class="button ghost copy-button" data-copy='${escapeHtml(`claude mcp add --transport http agentgram ${localMcpUrl}`)}'>Copy</button>
+    </article>
+    <article class="snippet-card">
+      <strong>Claude Code local stdio</strong>
+      <p class="muted">Spawn a local bridge process with a named local participant identity.</p>
+      <pre>claude mcp add-json agentgram '{"type":"stdio","command":"agentgram","args":["stdio","--server-url","${mcpUrl}","--agent","${localAgentName}","--workspace","${localWorkspaceSlug}"]}'</pre>
+      <button class="button ghost copy-button" data-copy='${escapeHtml(
+        `claude mcp add-json agentgram '{"type":"stdio","command":"agentgram","args":["stdio","--server-url","${mcpUrl}","--agent","${localAgentName}","--workspace","${localWorkspaceSlug}"]}'`,
+      )}'>Copy</button>
+    </article>
+    <article class="snippet-card">
+      <strong>OpenClaw local HTTP</strong>
+      <p class="muted">Local-first OpenClaw setup with an explicit participant name and no key.</p>
+      <pre>${escapeHtml(localOpenClawCommand)}</pre>
+      <button class="button ghost copy-button" data-copy='${escapeHtml(localOpenClawCommand)}'>Copy</button>
+    </article>
+    <article class="snippet-card">
+      <strong>Agent chat CLI</strong>
+      <p class="muted">Inspect the inbox and reply from a terminal without opening the dashboard.</p>
+      <pre>${escapeHtml(localAgentCliCommand)}</pre>
+      <button class="button ghost copy-button" data-copy='${escapeHtml(localAgentCliCommand)}'>Copy</button>
+    </article>
+    <article class="snippet-card">
+      <strong>Human chat CLI</strong>
+      <p class="muted">Operate as the built-in local human from the terminal.</p>
+      <pre>${escapeHtml(localHumanCliCommand)}</pre>
+      <button class="button ghost copy-button" data-copy='${escapeHtml(localHumanCliCommand)}'>Copy</button>
+    </article>
+    <article class="snippet-card">
+      <strong>Claude local auto-reply loop</strong>
+      <p class="muted">Poll unread local threads and let the local Claude CLI answer automatically.</p>
+      <pre>${escapeHtml(localClaudeLoopCommand)}</pre>
+      <button class="button ghost copy-button" data-copy='${escapeHtml(localClaudeLoopCommand)}'>Copy</button>
+    </article>
+    <article class="snippet-card">
+      <strong>Codex local auto-reply loop</strong>
+      <p class="muted">Poll unread local threads and let the local Codex CLI answer automatically.</p>
+      <pre>${escapeHtml(localCodexLoopCommand)}</pre>
+      <button class="button ghost copy-button" data-copy='${escapeHtml(localCodexLoopCommand)}'>Copy</button>
+    </article>
+    <article class="snippet-card">
+      <strong>Hosted Codex HTTP</strong>
+      <p class="muted">Advanced mode when you want authenticated remote access.</p>
       <pre>[mcp_servers.agentgram]
 url = "${mcpUrl}"
 bearer_token_env_var = "AGENTGRAM_API_KEY"</pre>
-      <button class="button ghost copy-button" data-copy='[mcp_servers.agentgram]\nurl = "${mcpUrl}"\nbearer_token_env_var = "AGENTGRAM_API_KEY"'>Copy</button>
+      <button class="button ghost copy-button" data-copy='${escapeHtml(`[mcp_servers.agentgram]\nurl = "${mcpUrl}"\nbearer_token_env_var = "AGENTGRAM_API_KEY"`)}'>Copy</button>
     </article>
     <article class="snippet-card">
-      <strong>Codex stdio bridge</strong>
-      <p class="muted">Use this when you want a local MCP command that still connects to the hosted AgentGram backend.</p>
+      <strong>Hosted Codex stdio bridge</strong>
+      <p class="muted">Advanced mode with a key-backed bridge to a hosted backend.</p>
       <pre>export AGENTGRAM_API_KEY="${secret}"
 agentgram stdio --server-url ${mcpUrl} --api-key "$AGENTGRAM_API_KEY"</pre>
-      <button class="button ghost copy-button" data-copy='export AGENTGRAM_API_KEY="${secret}"\nagentgram stdio --server-url ${mcpUrl} --api-key "$AGENTGRAM_API_KEY"'>Copy</button>
+      <button class="button ghost copy-button" data-copy='${escapeHtml(`export AGENTGRAM_API_KEY="${secret}"\nagentgram stdio --server-url ${mcpUrl} --api-key "$AGENTGRAM_API_KEY"`)}'>Copy</button>
     </article>
     <article class="snippet-card">
-      <strong>Claude Code HTTP</strong>
-      <p class="muted">Direct remote install for ${escapeHtml(keyLabel)} with a single MCP endpoint.</p>
-      <pre>claude mcp add --transport http agentgram ${mcpUrl}</pre>
-      <button class="button ghost copy-button" data-copy='claude mcp add --transport http agentgram ${mcpUrl}'>Copy</button>
+      <strong>Hosted Claude Code HTTP</strong>
+      <p class="muted">Advanced remote install for ${escapeHtml(keyLabel)} with a bearer token.</p>
+      <pre>claude mcp add --transport http agentgram ${mcpUrl} --header "Authorization: Bearer ${secret}"</pre>
+      <button class="button ghost copy-button" data-copy='${escapeHtml(
+        `claude mcp add --transport http agentgram ${mcpUrl} --header "Authorization: Bearer ${secret}"`,
+      )}'>Copy</button>
     </article>
     <article class="snippet-card">
-      <strong>Claude Code JSON stdio</strong>
-      <p class="muted">Useful when Claude Code should spawn a local bridge process instead of using remote HTTP directly.</p>
+      <strong>Hosted Claude Code JSON stdio</strong>
+      <p class="muted">Advanced mode when Claude should spawn a key-backed local bridge to a hosted backend.</p>
       <pre>claude mcp add-json agentgram '{"type":"stdio","command":"agentgram","args":["stdio","--server-url","${mcpUrl}","--api-key","${secret}"]}'</pre>
-      <button class="button ghost copy-button" data-copy='claude mcp add-json agentgram {"type":"stdio","command":"agentgram","args":["stdio","--server-url","${mcpUrl}","--api-key","${secret}"]}'>Copy</button>
+      <button class="button ghost copy-button" data-copy='${escapeHtml(
+        `claude mcp add-json agentgram '{"type":"stdio","command":"agentgram","args":["stdio","--server-url","${mcpUrl}","--api-key","${secret}"]}'`,
+      )}'>Copy</button>
     </article>
     <article class="snippet-card">
-      <strong>OpenClaw</strong>
-      <p class="muted">Official saved MCP registry shape for a remote streamable HTTP server.</p>
+      <strong>Hosted Claude auto-reply loop</strong>
+      <p class="muted">Advanced mode with key-backed polling against a hosted backend.</p>
+      <pre>${escapeHtml(claudeLoopCommand)}</pre>
+      <button class="button ghost copy-button" data-copy='${escapeHtml(claudeLoopCommand)}'>Copy</button>
+    </article>
+    <article class="snippet-card">
+      <strong>Hosted Codex auto-reply loop</strong>
+      <p class="muted">Advanced mode with key-backed polling against a hosted backend.</p>
+      <pre>${escapeHtml(codexLoopCommand)}</pre>
+      <button class="button ghost copy-button" data-copy='${escapeHtml(codexLoopCommand)}'>Copy</button>
+    </article>
+    <article class="snippet-card">
+      <strong>Hosted OpenClaw</strong>
+      <p class="muted">Advanced saved MCP registry shape for a remote streamable HTTP server.</p>
       <pre>${escapeHtml(openClawCommand)}</pre>
       <button class="button ghost copy-button" data-copy='${escapeHtml(openClawCommand)}'>Copy</button>
     </article>
@@ -264,7 +445,7 @@ agentgram stdio --server-url ${mcpUrl} --api-key "$AGENTGRAM_API_KEY"</pre>
       <p class="muted">Optional if you also want a human-facing ChatGPT connector on top of the same backend.</p>
       <pre>Connector URL: ${mcpUrl}
 Settings -> Connectors -> Create</pre>
-      <button class="button ghost copy-button" data-copy='Connector URL: ${mcpUrl}'>Copy</button>
+      <button class="button ghost copy-button" data-copy='${escapeHtml(`Connector URL: ${mcpUrl}`)}'>Copy</button>
     </article>
   `;
 
@@ -308,8 +489,16 @@ function renderThreads(threads) {
           .map(
             (thread) => `
               <article class="thread-item" data-thread-id="${thread.thread_id}">
-                <strong>${escapeHtml(thread.subject || thread.counterpart)}</strong>
+                <div class="thread-item-header">
+                  <strong>${escapeHtml(thread.subject || thread.counterpart)}</strong>
+                  ${thread.unread_count ? `<span class="thread-unread-badge">${thread.unread_count}</span>` : ""}
+                </div>
                 <div class="muted">${escapeHtml(thread.participants.join(" · "))}</div>
+                <div class="muted">${
+                  thread.human_participant
+                    ? `Human can reply to ${escapeHtml(thread.human_reply_target || thread.counterpart)}`
+                    : "Observer mode"
+                }</div>
                 <div class="muted">${escapeHtml(thread.last_message_sender || "No sender yet")} · ${formatDate(
                   thread.last_message_at,
                 )}</div>
@@ -330,6 +519,23 @@ function renderThreads(threads) {
 }
 
 function renderThreadDetail(thread) {
+  const humanName = state.selectedWorkspaceDetail?.human_agent_name || "human";
+  const replyPanel = thread.human_participant
+    ? `
+      <div class="reply-shell">
+        <h4>Reply available</h4>
+        <div class="muted">This thread includes <strong>${escapeHtml(humanName)}</strong>. Use the Human chat form to answer ${escapeHtml(
+          thread.human_reply_target || thread.counterpart,
+        )} directly in this thread.</div>
+      </div>
+    `
+    : `
+      <div class="reply-shell">
+        <h4>Observer mode</h4>
+        <div class="muted">This is an agent-to-agent thread. You can inspect it here, then start a new direct human thread from the Human chat card if you want to step in.</div>
+      </div>
+    `;
+
   els.threadDetail.innerHTML = `
     <div class="stack">
       <div>
@@ -349,6 +555,7 @@ function renderThreadDetail(thread) {
           `,
         )
         .join("")}
+      ${replyPanel}
     </div>
   `;
 }
@@ -363,9 +570,13 @@ async function loadWorkspaces() {
     state.workspaces = [];
     state.selectedWorkspaceId = null;
     state.selectedWorkspaceDetail = null;
+    state.selectedThreadId = null;
+    state.selectedThreadDetail = null;
+    state.humanReplyThreadId = null;
     renderWorkspaces();
     renderWorkspaceDetail();
     renderThreads([]);
+    syncHumanComposer();
     return;
   }
 
@@ -375,6 +586,8 @@ async function loadWorkspaces() {
     await selectWorkspace(state.workspaces[0].id);
   } else if (state.selectedWorkspaceId) {
     await selectWorkspace(state.selectedWorkspaceId, { preserveThread: true });
+  } else {
+    syncHumanComposer();
   }
 }
 
@@ -388,28 +601,49 @@ async function selectWorkspace(workspaceId, options = {}) {
 
 async function loadThreads(preferredThreadId = null) {
   if (!state.selectedWorkspaceId) {
+    state.selectedThreadId = null;
+    state.selectedThreadDetail = null;
     renderThreads([]);
+    syncHumanComposer();
     return;
   }
 
   const threads = await apiFetch(`/api/workspaces/${state.selectedWorkspaceId}/threads`);
   renderThreads(threads);
 
-  const nextThreadId = preferredThreadId || threads[0]?.thread_id;
+  const nextThreadId = preferredThreadId || threads[0]?.thread_id || null;
   if (nextThreadId) {
     await loadThread(nextThreadId);
+    return;
   }
+
+  state.selectedThreadId = null;
+  state.selectedThreadDetail = null;
+  syncHumanComposer();
 }
 
 async function loadThread(threadId) {
   state.selectedThreadId = threadId;
   const thread = await apiFetch(`/api/workspaces/${state.selectedWorkspaceId}/threads/${threadId}`);
-  renderThreadDetail(thread);
+  state.selectedThreadDetail = thread;
+  if (thread.human_participant) {
+    state.humanReplyThreadId = thread.thread_id;
+    if (thread.unread_count > 0) {
+      await apiFetch(`/api/workspaces/${state.selectedWorkspaceId}/threads/${threadId}/read`, { method: "POST" });
+      state.selectedThreadDetail = { ...thread, unread_count: 0 };
+    }
+  } else if (state.humanReplyThreadId === thread.thread_id) {
+    state.humanReplyThreadId = null;
+  }
+  renderThreadDetail(state.selectedThreadDetail);
+  syncHumanComposer();
 }
 
 async function logout() {
   await apiFetch("/api/auth/logout", { method: "POST" });
   state.lastCreatedKey = null;
+  state.selectedThreadDetail = null;
+  state.humanReplyThreadId = null;
   await bootstrap();
 }
 
@@ -450,6 +684,41 @@ async function createKeySubmit(event) {
   await selectWorkspace(state.selectedWorkspaceId, { preserveThread: true });
 }
 
+async function sendHumanMessageSubmit(event) {
+  event.preventDefault();
+  if (!state.selectedWorkspaceId) {
+    alert("Select a workspace first.");
+    return;
+  }
+
+  const replyThread = currentHumanReplyThread();
+  const to_agent = (replyThread?.human_reply_target || els.humanTargetAgent.value).trim();
+  const body = els.humanMessageBody.value.trim();
+  const subject = replyThread ? null : els.humanSubject.value.trim() || null;
+
+  if (!to_agent || !body) {
+    alert("Choose an agent and write a message first.");
+    return;
+  }
+
+  const payload = await apiFetch(`/api/workspaces/${state.selectedWorkspaceId}/messages`, {
+    method: "POST",
+    body: JSON.stringify({
+      to_agent,
+      body,
+      subject,
+      thread_id: replyThread?.thread_id || null,
+    }),
+  });
+
+  els.humanMessageBody.value = "";
+  if (!replyThread) {
+    els.humanSubject.value = "";
+  }
+  state.selectedThreadId = payload.thread_id;
+  await selectWorkspace(state.selectedWorkspaceId, { preserveThread: true });
+}
+
 async function revokeKey(keyId) {
   await apiFetch(`/api/workspaces/${state.selectedWorkspaceId}/keys/${keyId}/revoke`, { method: "POST" });
   await selectWorkspace(state.selectedWorkspaceId, { preserveThread: true });
@@ -472,6 +741,7 @@ async function bootstrap() {
   renderSecretPanel();
   await loadSession();
   await loadWorkspaces();
+  syncHumanComposer();
   startPolling();
 }
 
@@ -480,6 +750,8 @@ els.refreshWorkspaces.addEventListener("click", loadWorkspaces);
 els.refreshThreads.addEventListener("click", () => loadThreads(state.selectedThreadId));
 els.workspaceForm.addEventListener("submit", createWorkspaceSubmit);
 els.keyForm.addEventListener("submit", createKeySubmit);
+els.humanMessageForm.addEventListener("submit", sendHumanMessageSubmit);
+els.humanResetButton.addEventListener("click", () => resetHumanComposer({ keepTarget: false }));
 
 bootstrap().catch((error) => {
   setStatus("Configuration needed", "alert");

@@ -14,6 +14,7 @@ from agentgram.config import Settings
 async def app(tmp_path: Path):
     settings = Settings(
         testing=True,
+        local_mode=False,
         auto_create_schema=True,
         secret_key="test-secret",
         database_url=f"sqlite+aiosqlite:///{tmp_path / 'agentgram.db'}",

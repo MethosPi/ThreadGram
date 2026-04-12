@@ -17,6 +17,9 @@ class SessionOut(BaseModel):
     authenticated: bool
     user: UserOut | None = None
     public_api_base_url: str
+    local_mode: bool = False
+    default_local_workspace_slug: str | None = None
+    default_local_workspace_name: str | None = None
 
 
 class WorkspaceCreate(BaseModel):
@@ -76,6 +79,8 @@ class ThreadSummary(BaseModel):
     subject: str | None = None
     participants: list[str]
     counterpart: str
+    human_participant: bool = False
+    human_reply_target: str | None = None
     last_message_id: int | None = None
     last_message_at: datetime | None = None
     last_message_preview: str | None = None
@@ -88,6 +93,7 @@ class ThreadDetail(ThreadSummary):
 
 
 class WorkspaceDetail(WorkspaceOut):
+    human_agent_name: str
     agents: list[AgentSummary]
     keys: list[AgentKeyOut]
 

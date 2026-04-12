@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from sqlalchemy import Select, func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -22,6 +23,10 @@ from agentgram.schemas import (
 )
 from agentgram.security import extract_agent_key_prefix, generate_agent_key, verify_agent_key
 
+HUMAN_AGENT_NAME = "human"
+LOCAL_USER_ID = "00000000-0000-0000-0000-000000000001"
+LOCAL_GITHUB_USER_ID = "local-owner"
+
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
@@ -30,6 +35,23 @@ def utcnow() -> datetime:
 def slugify_name(value: str) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
     return slug or "workspace"
+
+
+def titleize_slug(slug: str) -> str:
+    return slug.replace("-", " ").strip().title() or "Workspace"
+
+
+def is_human_agent_name(value: str) -> bool:
+    return value.strip().casefold() == HUMAN_AGENT_NAME
+
+
+def build_human_identity(*, workspace_id: str) -> AgentIdentity:
+    return AgentIdentity(
+        key_id=f"human:{workspace_id}",
+        key_prefix="human",
+        workspace_id=workspace_id,
+        agent_name=HUMAN_AGENT_NAME,
+    )
 
 
 async def get_or_create_user_from_github(
@@ -55,6 +77,39 @@ async def get_or_create_user_from_github(
 
     await session.commit()
     await session.refresh(user)
+    return user
+
+
+async def ensure_local_user(
+    session: AsyncSession,
+    *,
+    github_login: str = "local",
+) -> User:
+    statement = select(User).where(User.github_user_id == LOCAL_GITHUB_USER_ID)
+    user = await session.scalar(statement)
+    if user is None:
+        user = User(
+            id=LOCAL_USER_ID,
+            github_user_id=LOCAL_GITHUB_USER_ID,
+            github_login=github_login,
+            avatar_url=None,
+        )
+        session.add(user)
+        try:
+            await session.commit()
+            await session.refresh(user)
+            return user
+        except IntegrityError:
+            await session.rollback()
+            existing = await session.scalar(select(User).where(User.github_user_id == LOCAL_GITHUB_USER_ID))
+            if existing is not None:
+                return existing
+            raise
+
+    if user.github_login != github_login:
+        user.github_login = github_login
+        await session.commit()
+        await session.refresh(user)
     return user
 
 
@@ -100,6 +155,36 @@ async def create_workspace(session: AsyncSession, *, owner_user_id: str, name: s
     return workspace
 
 
+async def get_or_create_workspace_for_slug(
+    session: AsyncSession,
+    *,
+    owner_user_id: str,
+    slug: str,
+    default_slug: str = "local",
+    default_name: str = "Local Control Room",
+) -> Workspace:
+    normalized_slug = slugify_name(slug)
+    workspace = await session.scalar(
+        select(Workspace).where(
+            Workspace.owner_user_id == owner_user_id,
+            Workspace.slug == normalized_slug,
+        )
+    )
+    if workspace is not None:
+        return workspace
+
+    workspace = Workspace(
+        id=str(uuid4()),
+        owner_user_id=owner_user_id,
+        slug=normalized_slug,
+        name=default_name if normalized_slug == slugify_name(default_slug) else titleize_slug(normalized_slug),
+    )
+    session.add(workspace)
+    await session.commit()
+    await session.refresh(workspace)
+    return workspace
+
+
 async def create_agent_key(
     session: AsyncSession,
     *,
@@ -107,11 +192,15 @@ async def create_agent_key(
     agent_name: str,
     description: str | None,
 ) -> tuple[AgentKey, str]:
+    normalized_agent_name = agent_name.strip()
+    if is_human_agent_name(normalized_agent_name):
+        raise ValueError(f"'{HUMAN_AGENT_NAME}' is reserved for the workspace's human operator.")
+
     prefix, key_hash, full_key = generate_agent_key()
     key = AgentKey(
         id=str(uuid4()),
         workspace_id=workspace_id,
-        agent_name=agent_name.strip(),
+        agent_name=normalized_agent_name,
         description=description.strip() if description else None,
         key_prefix=prefix,
         key_hash=key_hash,
@@ -156,10 +245,39 @@ async def list_agents(session: AsyncSession, workspace_id: str) -> list[AgentSum
         .order_by(AgentKey.agent_name.asc())
     )
     rows = (await session.execute(statement)).all()
-    return [
+    agents = [
         AgentSummary(agent_name=agent_name, active_key_count=active_key_count, last_used_at=last_used_at)
         for agent_name, active_key_count, last_used_at in rows
     ]
+    known_names = {agent.agent_name for agent in agents}
+    participant_names = set(
+        (
+            await session.execute(
+                select(Thread.agent_a, Thread.agent_b).where(Thread.workspace_id == workspace_id)
+            )
+        ).all()
+    )
+    for agent_a, agent_b in participant_names:
+        for participant in (agent_a, agent_b):
+            if participant not in known_names:
+                agents.append(AgentSummary(agent_name=participant, active_key_count=0, last_used_at=None))
+                known_names.add(participant)
+
+    state_names = list(
+        await session.scalars(
+            select(ThreadAgentState.agent_name)
+            .where(ThreadAgentState.workspace_id == workspace_id)
+            .distinct()
+        )
+    )
+    for participant in state_names:
+        if participant not in known_names:
+            agents.append(AgentSummary(agent_name=participant, active_key_count=0, last_used_at=None))
+            known_names.add(participant)
+
+    if not any(is_human_agent_name(agent.agent_name) for agent in agents):
+        agents.append(AgentSummary(agent_name=HUMAN_AGENT_NAME, active_key_count=0, last_used_at=None))
+    return sorted(agents, key=lambda agent: agent.agent_name)
 
 
 async def authenticate_agent_key(session: AsyncSession, presented_key: str) -> AgentIdentity | None:
@@ -196,18 +314,53 @@ async def build_workspace_detail(session: AsyncSession, workspace: Workspace):
         name=workspace.name,
         slug=workspace.slug,
         created_at=workspace.created_at,
+        human_agent_name=HUMAN_AGENT_NAME,
         agents=agents,
         keys=keys,
     )
 
 
-async def ensure_agent_exists(session: AsyncSession, workspace_id: str, agent_name: str) -> bool:
+async def participant_exists(session: AsyncSession, workspace_id: str, agent_name: str) -> bool:
+    if is_human_agent_name(agent_name):
+        return True
+
     statement = select(AgentKey.id).where(
         AgentKey.workspace_id == workspace_id,
         AgentKey.agent_name == agent_name,
         AgentKey.is_revoked.is_(False),
     )
     return await session.scalar(statement) is not None
+
+
+async def authenticate_local_agent(
+    session: AsyncSession,
+    *,
+    agent_name: str,
+    workspace_slug: str,
+    local_user_login: str,
+    default_workspace_slug: str,
+    default_workspace_name: str,
+) -> AgentIdentity:
+    normalized_agent_name = agent_name.strip()
+    if not normalized_agent_name:
+        raise ValueError("Agent identity is required.")
+    if is_human_agent_name(normalized_agent_name):
+        raise ValueError(f"'{HUMAN_AGENT_NAME}' is reserved for the dashboard operator.")
+
+    local_user = await ensure_local_user(session, github_login=local_user_login)
+    workspace = await get_or_create_workspace_for_slug(
+        session,
+        owner_user_id=local_user.id,
+        slug=workspace_slug,
+        default_slug=default_workspace_slug,
+        default_name=default_workspace_name,
+    )
+    return AgentIdentity(
+        key_id=f"local:{workspace.id}:{normalized_agent_name}",
+        key_prefix="local",
+        workspace_id=workspace.id,
+        agent_name=normalized_agent_name,
+    )
 
 
 def thread_includes_agent(thread: Thread, agent_name: str) -> bool:
@@ -290,12 +443,13 @@ async def send_message(
     body: str,
     thread_id: str | None = None,
     subject: str | None = None,
+    allow_unknown_recipients: bool = False,
 ) -> SendMessageResult:
     recipient = to_agent.strip()
     if recipient == identity.agent_name:
         raise ValueError("Agents cannot send messages to themselves in the MVP.")
-    if not await ensure_agent_exists(session, identity.workspace_id, recipient):
-        raise ValueError(f"Unknown recipient agent '{recipient}'.")
+    if not allow_unknown_recipients and not await participant_exists(session, identity.workspace_id, recipient):
+        raise ValueError(f"Unknown recipient participant '{recipient}'.")
 
     thread: Thread | None = None
     if thread_id:
@@ -525,34 +679,7 @@ async def list_workspace_threads_for_owner(
         .limit(limit)
     )
     threads = list(await session.scalars(statement))
-    summaries: list[ThreadSummary] = []
-    for thread in threads:
-        state = await session.scalar(
-            select(ThreadAgentState).where(
-                ThreadAgentState.thread_id == thread.id,
-                ThreadAgentState.agent_name == thread.agent_a,
-            )
-        )
-        last_message = thread.last_message
-        unread_count = 0
-        if state:
-            unread_count += await count_unread_messages(session, thread=thread, agent_name=thread.agent_a, state=state)
-        counterpart = f"{thread.agent_a} <-> {thread.agent_b}"
-        summaries.append(
-            ThreadSummary(
-                thread_id=thread.id,
-                workspace_id=workspace_id,
-                subject=thread.subject,
-                participants=[thread.agent_a, thread.agent_b],
-                counterpart=counterpart,
-                last_message_id=last_message.id if last_message else None,
-                last_message_at=last_message.created_at if last_message else thread.last_message_at,
-                last_message_preview=(last_message.body[:140] if last_message else None),
-                last_message_sender=(last_message.sender_agent_name if last_message else None),
-                unread_count=unread_count,
-            )
-        )
-    return summaries
+    return [await build_owner_thread_summary(session, thread=thread) for thread in threads]
 
 
 async def get_workspace_thread_for_owner(
@@ -570,18 +697,7 @@ async def get_workspace_thread_for_owner(
     if thread is None:
         return None
 
-    summary = ThreadSummary(
-        thread_id=thread.id,
-        workspace_id=thread.workspace_id,
-        subject=thread.subject,
-        participants=[thread.agent_a, thread.agent_b],
-        counterpart=f"{thread.agent_a} <-> {thread.agent_b}",
-        last_message_id=thread.last_message_id,
-        last_message_at=thread.last_message_at,
-        last_message_preview=(thread.last_message.body[:140] if thread.last_message else None),
-        last_message_sender=(thread.last_message.sender_agent_name if thread.last_message else None),
-        unread_count=0,
-    )
+    summary = await build_owner_thread_summary(session, thread=thread)
 
     messages = list(
         await session.scalars(
@@ -601,6 +717,40 @@ async def get_workspace_thread_for_owner(
             )
             for message in messages
         ],
+    )
+
+
+async def build_owner_thread_summary(
+    session: AsyncSession,
+    *,
+    thread: Thread,
+) -> ThreadSummary:
+    if thread_includes_agent(thread, HUMAN_AGENT_NAME):
+        summary = await build_thread_summary(session, thread=thread, agent_name=HUMAN_AGENT_NAME)
+        return summary.model_copy(
+            update={
+                "human_participant": True,
+                "human_reply_target": summary.counterpart,
+            }
+        )
+
+    last_message = thread.last_message
+    if last_message is None and thread.last_message_id is not None:
+        last_message = await session.scalar(select(Message).where(Message.id == thread.last_message_id))
+
+    return ThreadSummary(
+        thread_id=thread.id,
+        workspace_id=thread.workspace_id,
+        subject=thread.subject,
+        participants=[thread.agent_a, thread.agent_b],
+        counterpart=f"{thread.agent_a} <-> {thread.agent_b}",
+        human_participant=False,
+        human_reply_target=None,
+        last_message_id=last_message.id if last_message else None,
+        last_message_at=last_message.created_at if last_message else thread.last_message_at,
+        last_message_preview=(last_message.body[:140] if last_message else None),
+        last_message_sender=(last_message.sender_agent_name if last_message else None),
+        unread_count=0,
     )
 
 

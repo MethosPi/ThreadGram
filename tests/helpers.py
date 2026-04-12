@@ -22,3 +22,25 @@ async def create_agent_key(client: httpx.AsyncClient, workspace_id: str, agent_n
     )
     response.raise_for_status()
     return response.json()
+
+
+async def send_human_message(
+    client: httpx.AsyncClient,
+    workspace_id: str,
+    *,
+    to_agent: str,
+    body: str,
+    thread_id: str | None = None,
+    subject: str | None = None,
+) -> dict:
+    response = await client.post(
+        f"/api/workspaces/{workspace_id}/messages",
+        json={
+            "to_agent": to_agent,
+            "body": body,
+            "thread_id": thread_id,
+            "subject": subject,
+        },
+    )
+    response.raise_for_status()
+    return response.json()

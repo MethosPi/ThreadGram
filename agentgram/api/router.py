@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agentgram.dependencies import get_db_session, require_agent_identity, require_user
+from agentgram.dependencies import get_db_session, is_local_request, require_agent_identity, require_user
 from agentgram.models import User
 from agentgram.schemas import (
     AgentKeyCreate,
@@ -26,9 +26,11 @@ from agentgram.schemas import (
     WorkspaceOut,
 )
 from agentgram.services.core import (
+    build_human_identity,
     build_workspace_detail,
     create_agent_key,
     create_workspace,
+    ensure_local_user,
     fetch_inbox,
     get_or_create_user_from_github,
     get_thread,
@@ -55,15 +57,29 @@ def build_api_router() -> APIRouter:
     async def session_status(request: Request, user: User | None = Depends(require_user_optional)):
         public_api_base_url = request.app.state.settings.public_api_base_url
         if user is None:
-            return SessionOut(authenticated=False, user=None, public_api_base_url=public_api_base_url)
+            return SessionOut(
+                authenticated=False,
+                user=None,
+                public_api_base_url=public_api_base_url,
+                local_mode=request.app.state.settings.local_mode,
+                default_local_workspace_slug=request.app.state.settings.local_workspace_slug,
+                default_local_workspace_name=request.app.state.settings.local_workspace_name,
+            )
         return SessionOut(
             authenticated=True,
             user=UserOut.model_validate(user),
             public_api_base_url=public_api_base_url,
+            local_mode=request.app.state.settings.local_mode,
+            default_local_workspace_slug=request.app.state.settings.local_workspace_slug,
+            default_local_workspace_name=request.app.state.settings.local_workspace_name,
         )
 
     @router.get("/auth/github/login")
     async def github_login(request: Request, return_to: str | None = None):
+        if request.app.state.settings.local_mode:
+            target = return_to or request.app.state.settings.frontend_origin
+            return RedirectResponse(target, status_code=status.HTTP_302_FOUND)
+
         oauth = request.app.state.oauth
         if oauth is None:
             raise HTTPException(
@@ -79,6 +95,9 @@ def build_api_router() -> APIRouter:
 
     @router.get("/auth/github/callback", name="github_oauth_callback")
     async def github_callback(request: Request, session: AsyncSession = Depends(get_db_session)):
+        if request.app.state.settings.local_mode:
+            return RedirectResponse(request.app.state.settings.frontend_origin, status_code=status.HTTP_302_FOUND)
+
         oauth = request.app.state.oauth
         if oauth is None:
             raise HTTPException(
@@ -155,12 +174,15 @@ def build_api_router() -> APIRouter:
         workspace = await get_workspace_for_user(session, workspace_id, user.id)
         if workspace is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found.")
-        key, secret = await create_agent_key(
-            session,
-            workspace_id=workspace.id,
-            agent_name=payload.agent_name,
-            description=payload.description,
-        )
+        try:
+            key, secret = await create_agent_key(
+                session,
+                workspace_id=workspace.id,
+                agent_name=payload.agent_name,
+                description=payload.description,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
         return AgentKeyCreatedOut(key=AgentKeyOut.model_validate(key), secret=secret)
 
     @router.post("/workspaces/{workspace_id}/keys/{key_id}/revoke", response_model=AgentKeyOut)
@@ -206,6 +228,49 @@ def build_api_router() -> APIRouter:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Thread not found.")
         return thread
 
+    @router.post("/workspaces/{workspace_id}/messages", response_model=SendMessageResult, status_code=status.HTTP_201_CREATED)
+    async def owner_send_message(
+        workspace_id: str,
+        payload: SendMessageRequest,
+        request: Request,
+        user: User = Depends(require_user),
+        session: AsyncSession = Depends(get_db_session),
+    ):
+        workspace = await get_workspace_for_user(session, workspace_id, user.id)
+        if workspace is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found.")
+        try:
+            return await send_message(
+                session,
+                identity=build_human_identity(workspace_id=workspace.id),
+                to_agent=payload.to_agent,
+                body=payload.body,
+                thread_id=payload.thread_id,
+                subject=payload.subject,
+                allow_unknown_recipients=request.app.state.settings.local_mode,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    @router.post("/workspaces/{workspace_id}/threads/{thread_id}/read", response_model=MarkThreadReadResult)
+    async def owner_mark_thread_read(
+        workspace_id: str,
+        thread_id: str,
+        user: User = Depends(require_user),
+        session: AsyncSession = Depends(get_db_session),
+    ):
+        workspace = await get_workspace_for_user(session, workspace_id, user.id)
+        if workspace is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found.")
+        try:
+            return await mark_thread_read(
+                session,
+                identity=build_human_identity(workspace_id=workspace.id),
+                thread_id=thread_id,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
     @router.get("/agent/whoami", response_model=WhoAmIOut)
     async def agent_whoami(identity=Depends(require_agent_identity)):
         return WhoAmIOut(
@@ -247,6 +312,7 @@ def build_api_router() -> APIRouter:
     @router.post("/agent/messages", response_model=SendMessageResult, status_code=status.HTTP_201_CREATED)
     async def agent_send_message(
         payload: SendMessageRequest,
+        request: Request,
         identity=Depends(require_agent_identity),
         session: AsyncSession = Depends(get_db_session),
     ):
@@ -258,6 +324,7 @@ def build_api_router() -> APIRouter:
                 body=payload.body,
                 thread_id=payload.thread_id,
                 subject=payload.subject,
+                allow_unknown_recipients=request.app.state.settings.local_mode,
             )
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
@@ -299,6 +366,9 @@ async def require_user_optional(
     request: Request,
     session: AsyncSession = Depends(get_db_session),
 ) -> User | None:
+    if request.app.state.settings.local_mode and is_local_request(request):
+        return await ensure_local_user(session, github_login=request.app.state.settings.local_user_login)
+
     user_id = request.session.get("user_id")
     if not user_id:
         return None
