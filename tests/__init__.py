@@ -1,1 +1,1 @@
-"""Test package for AgentGram."""
+"""Test package for ThreadGram."""

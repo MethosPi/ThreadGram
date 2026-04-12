@@ -6,8 +6,8 @@ import httpx
 import pytest
 from asgi_lifespan import LifespanManager
 
-from agentgram.app import create_app
-from agentgram.config import Settings
+from threadgram.app import create_app
+from threadgram.config import Settings
 
 from tests.test_mcp import call_tool
 
@@ -19,7 +19,7 @@ async def local_app(tmp_path: Path):
         local_mode=True,
         auto_create_schema=True,
         secret_key="local-test-secret",
-        database_url=f"sqlite+aiosqlite:///{tmp_path / 'agentgram-local.db'}",
+        database_url=f"sqlite+aiosqlite:///{tmp_path / 'threadgram-local.db'}",
         frontend_origin="http://localhost:4173",
         public_api_base_url="http://localhost:8000",
         cors_origins=["http://localhost:4173"],

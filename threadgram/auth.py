@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from authlib.integrations.starlette_client import OAuth
 
-from agentgram.config import Settings
+from threadgram.config import Settings
 
 
 def build_oauth_client(settings: Settings) -> OAuth | None:

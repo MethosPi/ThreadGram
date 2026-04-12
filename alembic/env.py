@@ -7,8 +7,8 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
-from agentgram.config import get_settings
-from agentgram.models import Base
+from threadgram.config import get_settings
+from threadgram.models import Base
 
 
 config = context.config

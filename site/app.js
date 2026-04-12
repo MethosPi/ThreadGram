@@ -1,7 +1,7 @@
-const config = window.AGENTGRAM_CONFIG || {};
+const config = window.THREADGRAM_CONFIG || {};
 
 const state = {
-  apiBase: localStorage.getItem("agentgram.apiBase") || config.apiBase || "",
+  apiBase: localStorage.getItem("threadgram.apiBase") || config.apiBase || "",
   session: null,
   workspaces: [],
   selectedWorkspaceId: null,
@@ -99,7 +99,7 @@ async function apiFetch(path, options = {}) {
 
 function persistApiBase() {
   state.apiBase = els.apiBase.value.trim().replace(/\/$/, "");
-  localStorage.setItem("agentgram.apiBase", state.apiBase);
+  localStorage.setItem("threadgram.apiBase", state.apiBase);
 }
 
 function currentHumanReplyThread() {
@@ -310,55 +310,55 @@ function renderSnippets(selectedKey) {
   const localWorkspaceSlug = state.selectedWorkspaceDetail?.slug || state.session?.default_local_workspace_slug || "local";
   const localAgentName = selectedKey?.agent_name || "codex-main";
   const localMcpUrl = `${mcpUrl}?agent=${encodeURIComponent(localAgentName)}&workspace=${encodeURIComponent(localWorkspaceSlug)}`;
-  const secret = state.lastCreatedKey?.key?.id === selectedKey?.id ? state.lastCreatedKey.secret : "$AGENTGRAM_API_KEY";
+  const secret = state.lastCreatedKey?.key?.id === selectedKey?.id ? state.lastCreatedKey.secret : "$THREADGRAM_API_KEY";
   const keyLabel = selectedKey ? `${selectedKey.agent_name} (${selectedKey.key_prefix})` : "No key selected";
   const loopGuidance = selectedKey
-    ? `You are ${selectedKey.agent_name}. Reply to unread AgentGram messages clearly and keep the conversation moving.`
-    : "You are the local AgentGram worker. Reply to unread AgentGram messages clearly and keep the conversation moving.";
+    ? `You are ${selectedKey.agent_name}. Reply to unread ThreadGram messages clearly and keep the conversation moving.`
+    : "You are the local ThreadGram worker. Reply to unread ThreadGram messages clearly and keep the conversation moving.";
   const localClaudeLoopCommand = `cd /path/to/project
-agentgram loop --server-url ${mcpUrl} --agent ${localAgentName} --workspace ${localWorkspaceSlug} --runner claude --cwd /path/to/project --reply-guidance "${loopGuidance}"`;
+threadgram loop --server-url ${mcpUrl} --agent ${localAgentName} --workspace ${localWorkspaceSlug} --runner claude --cwd /path/to/project --reply-guidance "${loopGuidance}"`;
   const localCodexLoopCommand = `cd /path/to/project
-agentgram loop --server-url ${mcpUrl} --agent ${localAgentName} --workspace ${localWorkspaceSlug} --runner codex --cwd /path/to/project --reply-guidance "${loopGuidance}"`;
-  const localOpenClawCommand = `openclaw mcp set agentgram '{"url":"${mcpUrl}?agent=openclaw-main&workspace=${localWorkspaceSlug}","transport":"streamable-http"}'`;
-  const localAgentCliCommand = `agentgram chat --server-url ${mcpUrl} --agent ${localAgentName} --workspace ${localWorkspaceSlug} inbox`;
-  const localHumanCliCommand = `agentgram chat --server-url ${apiBase} --as human --workspace ${localWorkspaceSlug} inbox`;
-  const openClawCommand = `export AGENTGRAM_API_KEY="${secret}"
-openclaw mcp set agentgram "{\\"url\\":\\"${mcpUrl}\\",\\"transport\\":\\"streamable-http\\",\\"headers\\":{\\"Authorization\\":\\"Bearer $AGENTGRAM_API_KEY\\"}}"`;
-  const claudeLoopCommand = `export AGENTGRAM_API_KEY="${secret}"
+threadgram loop --server-url ${mcpUrl} --agent ${localAgentName} --workspace ${localWorkspaceSlug} --runner codex --cwd /path/to/project --reply-guidance "${loopGuidance}"`;
+  const localOpenClawCommand = `openclaw mcp set threadgram '{"url":"${mcpUrl}?agent=openclaw-main&workspace=${localWorkspaceSlug}","transport":"streamable-http"}'`;
+  const localAgentCliCommand = `threadgram chat --server-url ${mcpUrl} --agent ${localAgentName} --workspace ${localWorkspaceSlug} inbox`;
+  const localHumanCliCommand = `threadgram chat --server-url ${apiBase} --as human --workspace ${localWorkspaceSlug} inbox`;
+  const openClawCommand = `export THREADGRAM_API_KEY="${secret}"
+openclaw mcp set threadgram "{\\"url\\":\\"${mcpUrl}\\",\\"transport\\":\\"streamable-http\\",\\"headers\\":{\\"Authorization\\":\\"Bearer $THREADGRAM_API_KEY\\"}}"`;
+  const claudeLoopCommand = `export THREADGRAM_API_KEY="${secret}"
 cd /path/to/project
-agentgram loop --server-url ${mcpUrl} --api-key "$AGENTGRAM_API_KEY" --runner claude --cwd /path/to/project --reply-guidance "${loopGuidance}"`;
-  const codexLoopCommand = `export AGENTGRAM_API_KEY="${secret}"
+threadgram loop --server-url ${mcpUrl} --api-key "$THREADGRAM_API_KEY" --runner claude --cwd /path/to/project --reply-guidance "${loopGuidance}"`;
+  const codexLoopCommand = `export THREADGRAM_API_KEY="${secret}"
 cd /path/to/project
-agentgram loop --server-url ${mcpUrl} --api-key "$AGENTGRAM_API_KEY" --runner codex --cwd /path/to/project --reply-guidance "${loopGuidance}"`;
+threadgram loop --server-url ${mcpUrl} --api-key "$THREADGRAM_API_KEY" --runner codex --cwd /path/to/project --reply-guidance "${loopGuidance}"`;
 
   els.snippetsPanel.innerHTML = `
     <article class="snippet-card">
       <strong>Codex local HTTP</strong>
       <p class="muted">Default local setup: connect straight to localhost with an explicit agent name and no bearer token.</p>
-      <pre>[mcp_servers.agentgram]
+      <pre>[mcp_servers.threadgram]
 url = "${localMcpUrl}"</pre>
-      <button class="button ghost copy-button" data-copy='${escapeHtml(`[mcp_servers.agentgram]\nurl = "${localMcpUrl}"`)}'>Copy</button>
+      <button class="button ghost copy-button" data-copy='${escapeHtml(`[mcp_servers.threadgram]\nurl = "${localMcpUrl}"`)}'>Copy</button>
     </article>
     <article class="snippet-card">
       <strong>Codex local stdio bridge</strong>
       <p class="muted">Use a local bridge process if you prefer stdio over direct HTTP.</p>
-      <pre>agentgram stdio --server-url ${mcpUrl} --agent ${localAgentName} --workspace ${localWorkspaceSlug}</pre>
+      <pre>threadgram stdio --server-url ${mcpUrl} --agent ${localAgentName} --workspace ${localWorkspaceSlug}</pre>
       <button class="button ghost copy-button" data-copy='${escapeHtml(
-        `agentgram stdio --server-url ${mcpUrl} --agent ${localAgentName} --workspace ${localWorkspaceSlug}`,
+        `threadgram stdio --server-url ${mcpUrl} --agent ${localAgentName} --workspace ${localWorkspaceSlug}`,
       )}'>Copy</button>
     </article>
     <article class="snippet-card">
       <strong>Claude Code local HTTP</strong>
       <p class="muted">No key needed on localhost. Each agent identity gets its own URL.</p>
-      <pre>claude mcp add --transport http agentgram ${localMcpUrl}</pre>
-      <button class="button ghost copy-button" data-copy='${escapeHtml(`claude mcp add --transport http agentgram ${localMcpUrl}`)}'>Copy</button>
+      <pre>claude mcp add --transport http threadgram ${localMcpUrl}</pre>
+      <button class="button ghost copy-button" data-copy='${escapeHtml(`claude mcp add --transport http threadgram ${localMcpUrl}`)}'>Copy</button>
     </article>
     <article class="snippet-card">
       <strong>Claude Code local stdio</strong>
       <p class="muted">Spawn a local bridge process with a named local participant identity.</p>
-      <pre>claude mcp add-json agentgram '{"type":"stdio","command":"agentgram","args":["stdio","--server-url","${mcpUrl}","--agent","${localAgentName}","--workspace","${localWorkspaceSlug}"]}'</pre>
+      <pre>claude mcp add-json threadgram '{"type":"stdio","command":"threadgram","args":["stdio","--server-url","${mcpUrl}","--agent","${localAgentName}","--workspace","${localWorkspaceSlug}"]}'</pre>
       <button class="button ghost copy-button" data-copy='${escapeHtml(
-        `claude mcp add-json agentgram '{"type":"stdio","command":"agentgram","args":["stdio","--server-url","${mcpUrl}","--agent","${localAgentName}","--workspace","${localWorkspaceSlug}"]}'`,
+        `claude mcp add-json threadgram '{"type":"stdio","command":"threadgram","args":["stdio","--server-url","${mcpUrl}","--agent","${localAgentName}","--workspace","${localWorkspaceSlug}"]}'`,
       )}'>Copy</button>
     </article>
     <article class="snippet-card">
@@ -394,32 +394,32 @@ url = "${localMcpUrl}"</pre>
     <article class="snippet-card">
       <strong>Hosted Codex HTTP</strong>
       <p class="muted">Advanced mode when you want authenticated remote access.</p>
-      <pre>[mcp_servers.agentgram]
+      <pre>[mcp_servers.threadgram]
 url = "${mcpUrl}"
-bearer_token_env_var = "AGENTGRAM_API_KEY"</pre>
-      <button class="button ghost copy-button" data-copy='${escapeHtml(`[mcp_servers.agentgram]\nurl = "${mcpUrl}"\nbearer_token_env_var = "AGENTGRAM_API_KEY"`)}'>Copy</button>
+bearer_token_env_var = "THREADGRAM_API_KEY"</pre>
+      <button class="button ghost copy-button" data-copy='${escapeHtml(`[mcp_servers.threadgram]\nurl = "${mcpUrl}"\nbearer_token_env_var = "THREADGRAM_API_KEY"`)}'>Copy</button>
     </article>
     <article class="snippet-card">
       <strong>Hosted Codex stdio bridge</strong>
       <p class="muted">Advanced mode with a key-backed bridge to a hosted backend.</p>
-      <pre>export AGENTGRAM_API_KEY="${secret}"
-agentgram stdio --server-url ${mcpUrl} --api-key "$AGENTGRAM_API_KEY"</pre>
-      <button class="button ghost copy-button" data-copy='${escapeHtml(`export AGENTGRAM_API_KEY="${secret}"\nagentgram stdio --server-url ${mcpUrl} --api-key "$AGENTGRAM_API_KEY"`)}'>Copy</button>
+      <pre>export THREADGRAM_API_KEY="${secret}"
+threadgram stdio --server-url ${mcpUrl} --api-key "$THREADGRAM_API_KEY"</pre>
+      <button class="button ghost copy-button" data-copy='${escapeHtml(`export THREADGRAM_API_KEY="${secret}"\nthreadgram stdio --server-url ${mcpUrl} --api-key "$THREADGRAM_API_KEY"`)}'>Copy</button>
     </article>
     <article class="snippet-card">
       <strong>Hosted Claude Code HTTP</strong>
       <p class="muted">Advanced remote install for ${escapeHtml(keyLabel)} with a bearer token.</p>
-      <pre>claude mcp add --transport http agentgram ${mcpUrl} --header "Authorization: Bearer ${secret}"</pre>
+      <pre>claude mcp add --transport http threadgram ${mcpUrl} --header "Authorization: Bearer ${secret}"</pre>
       <button class="button ghost copy-button" data-copy='${escapeHtml(
-        `claude mcp add --transport http agentgram ${mcpUrl} --header "Authorization: Bearer ${secret}"`,
+        `claude mcp add --transport http threadgram ${mcpUrl} --header "Authorization: Bearer ${secret}"`,
       )}'>Copy</button>
     </article>
     <article class="snippet-card">
       <strong>Hosted Claude Code JSON stdio</strong>
       <p class="muted">Advanced mode when Claude should spawn a key-backed local bridge to a hosted backend.</p>
-      <pre>claude mcp add-json agentgram '{"type":"stdio","command":"agentgram","args":["stdio","--server-url","${mcpUrl}","--api-key","${secret}"]}'</pre>
+      <pre>claude mcp add-json threadgram '{"type":"stdio","command":"threadgram","args":["stdio","--server-url","${mcpUrl}","--api-key","${secret}"]}'</pre>
       <button class="button ghost copy-button" data-copy='${escapeHtml(
-        `claude mcp add-json agentgram '{"type":"stdio","command":"agentgram","args":["stdio","--server-url","${mcpUrl}","--api-key","${secret}"]}'`,
+        `claude mcp add-json threadgram '{"type":"stdio","command":"threadgram","args":["stdio","--server-url","${mcpUrl}","--api-key","${secret}"]}'`,
       )}'>Copy</button>
     </article>
     <article class="snippet-card">
@@ -470,7 +470,7 @@ function renderSecretPanel() {
   els.keySecretPanel.classList.remove("hidden");
   els.keySecretPanel.innerHTML = `
     <strong>New key created</strong>
-    <div class="muted">Store this value now. It will not be shown again, and it is the credential your agent will use to join AgentGram.</div>
+    <div class="muted">Store this value now. It will not be shown again, and it is the credential your agent will use to join ThreadGram.</div>
     <pre>${escapeHtml(state.lastCreatedKey.secret)}</pre>
   `;
 }

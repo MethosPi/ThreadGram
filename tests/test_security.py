@@ -1,4 +1,4 @@
-from agentgram.security import extract_agent_key_prefix, generate_agent_key, verify_agent_key
+from threadgram.security import extract_agent_key_prefix, generate_agent_key, verify_agent_key
 
 
 def test_generated_agent_key_round_trip():

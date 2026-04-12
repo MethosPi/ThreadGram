@@ -5,7 +5,7 @@ from typing import Any, Protocol
 
 import httpx
 
-from agentgram.schemas import (
+from threadgram.schemas import (
     AgentsResponse,
     InboxResponse,
     MarkThreadReadResult,
@@ -20,7 +20,7 @@ from agentgram.schemas import (
 )
 
 
-class AgentGramAPIError(RuntimeError):
+class ThreadGramAPIError(RuntimeError):
     def __init__(self, message: str, *, status_code: int | None = None) -> None:
         super().__init__(message)
         self.status_code = status_code
@@ -118,7 +118,7 @@ class BaseAPIClient:
         try:
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
-            raise AgentGramAPIError(
+            raise ThreadGramAPIError(
                 _extract_error_detail(response),
                 status_code=response.status_code,
             ) from exc
@@ -127,7 +127,7 @@ class BaseAPIClient:
         return response.json()
 
 
-class AgentGramBackendClient(BaseAPIClient):
+class ThreadGramBackendClient(BaseAPIClient):
     def __init__(
         self,
         *,
@@ -146,8 +146,8 @@ class AgentGramBackendClient(BaseAPIClient):
         headers = dict(kwargs.pop("headers", {}) or {})
         if not self.api_key:
             if not self.agent_name:
-                raise AgentGramAPIError(
-                    "Agent name is required when no AgentGram API key is provided."
+                raise ThreadGramAPIError(
+                    "Agent name is required when no ThreadGram API key is provided."
                 )
             params.setdefault("agent", self.agent_name)
             if self.workspace:
@@ -226,7 +226,7 @@ class AgentGramBackendClient(BaseAPIClient):
         return MarkThreadReadResult.model_validate(payload)
 
 
-class AgentGramHumanLocalClient(BaseAPIClient):
+class ThreadGramHumanLocalClient(BaseAPIClient):
     def __init__(
         self,
         *,
@@ -249,8 +249,8 @@ class AgentGramHumanLocalClient(BaseAPIClient):
     async def _ensure_local_session(self) -> SessionOut:
         session = await self.session_status()
         if not session.local_mode or not session.authenticated:
-            raise AgentGramAPIError(
-                "Human chat mode only works against a local AgentGram server on localhost. Use the dashboard for hosted mode."
+            raise ThreadGramAPIError(
+                "Human chat mode only works against a local ThreadGram server on localhost. Use the dashboard for hosted mode."
             )
         return session
 
@@ -342,7 +342,7 @@ class AgentGramHumanLocalClient(BaseAPIClient):
     ) -> ThreadDetail:
         thread = await self._get_workspace_thread(thread_id=thread_id, limit=limit)
         if not all_threads and not thread.human_participant:
-            raise AgentGramAPIError(
+            raise ThreadGramAPIError(
                 "Human chat mode can only open threads that include the human participant. Re-run with --all-threads to inspect agent-only threads."
             )
         return thread
@@ -359,7 +359,7 @@ class AgentGramHumanLocalClient(BaseAPIClient):
         if thread_id:
             thread = await self._get_workspace_thread(thread_id=thread_id, limit=1)
             if not thread.human_participant:
-                raise AgentGramAPIError(
+                raise ThreadGramAPIError(
                     "Human chat mode can only reply to threads that include the human participant."
                 )
         payload = await self._request(
@@ -378,7 +378,7 @@ class AgentGramHumanLocalClient(BaseAPIClient):
         workspace = await self._resolve_workspace()
         thread = await self._get_workspace_thread(thread_id=thread_id, limit=1)
         if not thread.human_participant:
-            raise AgentGramAPIError(
+            raise ThreadGramAPIError(
                 "Human chat mode can only mark threads as read when the human participant is part of the thread."
             )
         payload = await self._request("POST", f"/api/workspaces/{workspace.id}/threads/{thread_id}/read")

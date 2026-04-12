@@ -7,9 +7,9 @@ from fastapi import Depends, Header, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from agentgram.context import AgentIdentity
-from agentgram.models import User, Workspace
-from agentgram.services.core import authenticate_agent_key, authenticate_local_agent, ensure_local_user
+from threadgram.context import AgentIdentity
+from threadgram.models import User, Workspace
+from threadgram.services.core import authenticate_agent_key, authenticate_local_agent, ensure_local_user
 
 
 def get_session_factory(request: Request) -> async_sessionmaker[AsyncSession]:

@@ -3,7 +3,7 @@ requires = ["setuptools>=69", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "agentgram"
+name = "threadgram"
 version = "0.1.0"
 description = "A Dockerized Python MCP relay and GitHub Pages onboarding portal for agent and human messaging."
 readme = "README.md"
@@ -31,10 +31,10 @@ dev = [
 ]
 
 [project.scripts]
-agentgram = "agentgram.cli:main"
+threadgram = "threadgram.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["agentgram*"]
+include = ["threadgram*"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

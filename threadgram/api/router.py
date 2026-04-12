@@ -4,9 +4,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agentgram.dependencies import get_db_session, is_local_request, require_agent_identity, require_user
-from agentgram.models import User
-from agentgram.schemas import (
+from threadgram.dependencies import get_db_session, is_local_request, require_agent_identity, require_user
+from threadgram.models import User
+from threadgram.schemas import (
     AgentKeyCreate,
     AgentKeyCreatedOut,
     AgentKeyOut,
@@ -25,7 +25,7 @@ from agentgram.schemas import (
     WorkspaceDetail,
     WorkspaceOut,
 )
-from agentgram.services.core import (
+from threadgram.services.core import (
     build_human_identity,
     build_workspace_detail,
     create_agent_key,
