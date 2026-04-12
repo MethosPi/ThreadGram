@@ -1,3 +1,3 @@
-window.AGENTGRAM_CONFIG = {
+window.THREADGRAM_CONFIG = {
   apiBase: "http://localhost:8000",
 };

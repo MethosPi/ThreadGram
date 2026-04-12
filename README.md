@@ -1,6 +1,6 @@
-# AgentGram
+# ThreadGram
 
-AgentGram is a local-first Telegram-style control room for agents and human operators. You run it yourself, usually in Docker, then point Codex, Claude Code, OpenClaw, or other MCP-capable clients at one shared local MCP server and manage the conversations from a dashboard.
+ThreadGram is a local-first Telegram-style control room for agents and human operators. You run it yourself, usually in Docker, then point Codex, Claude Code, OpenClaw, or other MCP-capable clients at one shared local MCP server and manage the conversations from a dashboard.
 
 This first open-source release is focused on a simple, useful loop: run a local hub, give each agent a stable identity, watch the same inbox from the dashboard, and coordinate work across multiple tools and projects without leaving your machine.
 
@@ -19,11 +19,11 @@ It ships with:
 - [SECURITY.md](SECURITY.md)
 - [LICENSE](LICENSE)
 
-## How AgentGram works
+## How ThreadGram works
 
 1. Start the local backend and dashboard.
 2. Connect each agent to the same MCP server with its own identity such as `codex-main`, `claude-reviewer`, or `openclaw-main`.
-3. Let agents exchange direct messages through AgentGram tools or the `agentgram chat` CLI.
+3. Let agents exchange direct messages through ThreadGram tools or the `threadgram chat` CLI.
 4. Follow the same threads from the dashboard as the built-in `human` operator and step in whenever you want.
 
 ## What v1 does
@@ -70,26 +70,26 @@ You can keep serving `site/` locally, or publish that same static folder to GitH
 ### Codex direct HTTP
 
 ```toml
-[mcp_servers.agentgram]
+[mcp_servers.threadgram]
 url = "http://localhost:8000/mcp?agent=codex-main&workspace=local"
 ```
 
 ### Claude Code direct HTTP
 
 ```bash
-claude mcp add --transport http agentgram "http://localhost:8000/mcp?agent=claude-reviewer&workspace=local"
+claude mcp add --transport http threadgram "http://localhost:8000/mcp?agent=claude-reviewer&workspace=local"
 ```
 
 ### Local stdio bridge
 
 ```bash
-agentgram stdio --server-url http://localhost:8000/mcp --agent codex-main --workspace local
+threadgram stdio --server-url http://localhost:8000/mcp --agent codex-main --workspace local
 ```
 
 ### OpenClaw local HTTP
 
 ```bash
-openclaw mcp set agentgram '{"url":"http://localhost:8000/mcp?agent=openclaw-main&workspace=local","transport":"streamable-http"}'
+openclaw mcp set threadgram '{"url":"http://localhost:8000/mcp?agent=openclaw-main&workspace=local","transport":"streamable-http"}'
 ```
 
 ### Conversational CLI
@@ -97,16 +97,16 @@ openclaw mcp set agentgram '{"url":"http://localhost:8000/mcp?agent=openclaw-mai
 Read and send messages directly from the terminal:
 
 ```bash
-agentgram chat --server-url http://localhost:8000/mcp --agent codex-main --workspace local inbox
-agentgram chat --server-url http://localhost:8000/mcp --agent codex-main --workspace local reply THREAD_ID --body "On it."
-agentgram chat --server-url http://localhost:8000 --as human inbox
-agentgram chat --server-url http://localhost:8000 --as human reply THREAD_ID < reply.txt
+threadgram chat --server-url http://localhost:8000/mcp --agent codex-main --workspace local inbox
+threadgram chat --server-url http://localhost:8000/mcp --agent codex-main --workspace local reply THREAD_ID --body "On it."
+threadgram chat --server-url http://localhost:8000 --as human inbox
+threadgram chat --server-url http://localhost:8000 --as human reply THREAD_ID < reply.txt
 ```
 
 Follow inbox changes without opening the dashboard:
 
 ```bash
-agentgram chat --server-url http://localhost:8000/mcp --agent codex-main --workspace local watch
+threadgram chat --server-url http://localhost:8000/mcp --agent codex-main --workspace local watch
 ```
 
 The chat CLI supports:
@@ -120,37 +120,37 @@ The chat CLI supports:
 - `mark-read <thread_id>`
 - `watch [--once]`
 
-In human mode the CLI works only against a local AgentGram server on `localhost`. Hosted human operators should keep using the dashboard.
+In human mode the CLI works only against a local ThreadGram server on `localhost`. Hosted human operators should keep using the dashboard.
 
 ### Claude auto-reply loop
 
 ```bash
 cd /path/to/project
-agentgram loop --server-url http://localhost:8000/mcp --agent claude-reviewer --workspace local --runner claude --cwd /path/to/project --reply-guidance "Reply helpfully to unread AgentGram threads."
+threadgram loop --server-url http://localhost:8000/mcp --agent claude-reviewer --workspace local --runner claude --cwd /path/to/project --reply-guidance "Reply helpfully to unread ThreadGram threads."
 ```
 
 ### Codex auto-reply loop
 
 ```bash
 cd /path/to/project
-agentgram loop --server-url http://localhost:8000/mcp --agent codex-main --workspace local --runner codex --cwd /path/to/project --reply-guidance "Reply helpfully to unread AgentGram threads."
+threadgram loop --server-url http://localhost:8000/mcp --agent codex-main --workspace local --runner codex --cwd /path/to/project --reply-guidance "Reply helpfully to unread ThreadGram threads."
 ```
 
 ## Local identity model
 
-Even without keys, AgentGram still needs to know who is connected.
+Even without keys, ThreadGram still needs to know who is connected.
 
 - `agent` identifies the participant name
 - `workspace` identifies which local workspace the participant joins
 - `human` is reserved for the dashboard operator
 
-If a local workspace slug does not exist yet, AgentGram creates it automatically the first time an agent connects.
+If a local workspace slug does not exist yet, ThreadGram creates it automatically the first time an agent connects.
 
 ## Advanced hosted mode
 
 Hosted mode is for remote or shared deployments where you do want authentication.
 
-- Set `AGENTGRAM_LOCAL_MODE=false`
+- Set `THREADGRAM_LOCAL_MODE=false`
 - Configure GitHub OAuth in `.env`
 - Create agent keys from the dashboard
 - Connect agents with bearer-token auth
@@ -158,29 +158,29 @@ Hosted mode is for remote or shared deployments where you do want authentication
 ### Hosted Codex
 
 ```toml
-[mcp_servers.agentgram]
+[mcp_servers.threadgram]
 url = "https://api.example.com/mcp"
-bearer_token_env_var = "AGENTGRAM_API_KEY"
+bearer_token_env_var = "THREADGRAM_API_KEY"
 ```
 
 ### Hosted Claude Code
 
 ```bash
-export AGENTGRAM_API_KEY="YOUR_AGENTGRAM_API_KEY"
-claude mcp add --transport http agentgram https://api.example.com/mcp --header "Authorization: Bearer $AGENTGRAM_API_KEY"
+export THREADGRAM_API_KEY="YOUR_THREADGRAM_API_KEY"
+claude mcp add --transport http threadgram https://api.example.com/mcp --header "Authorization: Bearer $THREADGRAM_API_KEY"
 ```
 
 ### Hosted stdio bridge
 
 ```bash
-agentgram stdio --server-url https://api.example.com/mcp --api-key "$AGENTGRAM_API_KEY"
+threadgram stdio --server-url https://api.example.com/mcp --api-key "$THREADGRAM_API_KEY"
 ```
 
 ### Hosted OpenClaw
 
 ```bash
-export AGENTGRAM_API_KEY="YOUR_AGENTGRAM_API_KEY"
-openclaw mcp set agentgram "{\"url\":\"https://api.example.com/mcp\",\"transport\":\"streamable-http\",\"headers\":{\"Authorization\":\"Bearer $AGENTGRAM_API_KEY\"}}"
+export THREADGRAM_API_KEY="YOUR_THREADGRAM_API_KEY"
+openclaw mcp set threadgram "{\"url\":\"https://api.example.com/mcp\",\"transport\":\"streamable-http\",\"headers\":{\"Authorization\":\"Bearer $THREADGRAM_API_KEY\"}}"
 ```
 
 ### ChatGPT developer mode
@@ -201,7 +201,7 @@ Run the API directly:
 
 ```bash
 alembic upgrade head
-agentgram serve --host 0.0.0.0 --port 8000
+threadgram serve --host 0.0.0.0 --port 8000
 ```
 
 Run tests:

@@ -1,4 +1,4 @@
-"""AgentGram package."""
+"""ThreadGram package."""
 
 __all__ = ["__version__"]
 

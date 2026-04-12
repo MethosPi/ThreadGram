@@ -10,9 +10,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from agentgram.context import AgentIdentity
-from agentgram.models import AgentKey, Message, Thread, ThreadAgentState, User, Workspace
-from agentgram.schemas import (
+from threadgram.context import AgentIdentity
+from threadgram.models import AgentKey, Message, Thread, ThreadAgentState, User, Workspace
+from threadgram.schemas import (
     AgentSummary,
     InboxResponse,
     MarkThreadReadResult,
@@ -21,7 +21,7 @@ from agentgram.schemas import (
     ThreadDetail,
     ThreadSummary,
 )
-from agentgram.security import extract_agent_key_prefix, generate_agent_key, verify_agent_key
+from threadgram.security import extract_agent_key_prefix, generate_agent_key, verify_agent_key
 
 HUMAN_AGENT_NAME = "human"
 LOCAL_USER_ID = "00000000-0000-0000-0000-000000000001"
@@ -305,7 +305,7 @@ async def authenticate_agent_key(session: AsyncSession, presented_key: str) -> A
 
 
 async def build_workspace_detail(session: AsyncSession, workspace: Workspace):
-    from agentgram.schemas import WorkspaceDetail
+    from threadgram.schemas import WorkspaceDetail
 
     keys = await list_workspace_keys(session, workspace.id)
     agents = await list_agents(session, workspace.id)

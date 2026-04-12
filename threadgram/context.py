@@ -12,7 +12,7 @@ class AgentIdentity:
     agent_name: str
 
 
-_current_agent: ContextVar[AgentIdentity | None] = ContextVar("agentgram_current_agent", default=None)
+_current_agent: ContextVar[AgentIdentity | None] = ContextVar("threadgram_current_agent", default=None)
 
 
 def set_current_agent(identity: AgentIdentity):

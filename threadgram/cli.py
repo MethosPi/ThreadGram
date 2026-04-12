@@ -11,32 +11,32 @@ from typing import TextIO
 import httpx
 import uvicorn
 
-from agentgram.app import create_app
-from agentgram.bridge import create_stdio_bridge
-from agentgram.client import AgentGramAPIError, AgentGramBackendClient, AgentGramHumanLocalClient, ConversationClient
-from agentgram.loop import run_auto_reply_loop
-from agentgram.schemas import AgentsResponse, InboxResponse, ThreadDetail
+from threadgram.app import create_app
+from threadgram.bridge import create_stdio_bridge
+from threadgram.client import ThreadGramAPIError, ThreadGramBackendClient, ThreadGramHumanLocalClient, ConversationClient
+from threadgram.loop import run_auto_reply_loop
+from threadgram.schemas import AgentsResponse, InboxResponse, ThreadDetail
 
 SleepFunc = Callable[[float], Awaitable[None]]
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="agentgram")
+    parser = argparse.ArgumentParser(prog="threadgram")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    serve = subparsers.add_parser("serve", help="Run the AgentGram HTTP API and MCP server.")
+    serve = subparsers.add_parser("serve", help="Run the ThreadGram HTTP API and MCP server.")
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument("--port", default=8000, type=int)
 
-    stdio = subparsers.add_parser("stdio", help="Run the local stdio bridge that forwards to an AgentGram API.")
-    stdio.add_argument("--server-url", required=True, help="Hosted AgentGram MCP endpoint, for example https://api.example.com/mcp")
-    stdio.add_argument("--api-key", help="AgentGram bearer token. Falls back to AGENTGRAM_API_KEY.")
+    stdio = subparsers.add_parser("stdio", help="Run the local stdio bridge that forwards to a ThreadGram API.")
+    stdio.add_argument("--server-url", required=True, help="Hosted ThreadGram MCP endpoint, for example https://api.example.com/mcp")
+    stdio.add_argument("--api-key", help="ThreadGram bearer token. Falls back to THREADGRAM_API_KEY.")
     stdio.add_argument("--agent", help="Local-mode participant name, for example codex-main.")
     stdio.add_argument("--workspace", help="Local-mode workspace slug. Defaults to the server's local workspace slug.")
 
-    loop = subparsers.add_parser("loop", help="Poll AgentGram and auto-reply to unread threads with a local Claude or Codex CLI.")
-    loop.add_argument("--server-url", required=True, help="Hosted AgentGram MCP endpoint, for example https://api.example.com/mcp")
-    loop.add_argument("--api-key", help="AgentGram bearer token. Falls back to AGENTGRAM_API_KEY.")
+    loop = subparsers.add_parser("loop", help="Poll ThreadGram and auto-reply to unread threads with a local Claude or Codex CLI.")
+    loop.add_argument("--server-url", required=True, help="Hosted ThreadGram MCP endpoint, for example https://api.example.com/mcp")
+    loop.add_argument("--api-key", help="ThreadGram bearer token. Falls back to THREADGRAM_API_KEY.")
     loop.add_argument("--agent", help="Local-mode participant name, for example claude-reviewer.")
     loop.add_argument("--workspace", help="Local-mode workspace slug. Defaults to the server's local workspace slug.")
     loop.add_argument("--runner", choices=["claude", "codex"], required=True, help="Local agent CLI to use for generating replies.")
@@ -48,11 +48,11 @@ def build_parser() -> argparse.ArgumentParser:
     loop.add_argument("--once", action="store_true", help="Run a single poll-and-reply pass, then exit.")
     loop.add_argument("--cwd", help="Working directory to give the local Claude or Codex runner for context.")
 
-    chat = subparsers.add_parser("chat", help="Read and send AgentGram messages directly from the terminal.")
+    chat = subparsers.add_parser("chat", help="Read and send ThreadGram messages directly from the terminal.")
     chat.add_argument(
         "--server-url",
         required=True,
-        help="AgentGram API base URL or MCP endpoint, for example http://localhost:8000 or http://localhost:8000/mcp",
+        help="ThreadGram API base URL or MCP endpoint, for example http://localhost:8000 or http://localhost:8000/mcp",
     )
     chat.add_argument(
         "--as",
@@ -61,7 +61,7 @@ def build_parser() -> argparse.ArgumentParser:
         default="agent",
         help="Run the chat CLI as an agent or as the local human operator.",
     )
-    chat.add_argument("--api-key", help="AgentGram bearer token. Falls back to AGENTGRAM_API_KEY in agent mode.")
+    chat.add_argument("--api-key", help="ThreadGram bearer token. Falls back to THREADGRAM_API_KEY in agent mode.")
     chat.add_argument("--agent", help="Local-mode participant name in agent mode, for example codex-main.")
     chat.add_argument("--workspace", help="Workspace slug. In human mode this selects the local workspace to open.")
 
@@ -122,10 +122,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def resolve_agent_auth(parser: argparse.ArgumentParser, api_key: str | None, agent_name: str | None) -> tuple[str | None, str | None]:
-    resolved_api_key = api_key or os.getenv("AGENTGRAM_API_KEY")
-    resolved_agent_name = agent_name or os.getenv("AGENTGRAM_AGENT_NAME")
+    resolved_api_key = api_key or os.getenv("THREADGRAM_API_KEY")
+    resolved_agent_name = agent_name or os.getenv("THREADGRAM_AGENT_NAME")
     if not resolved_api_key and not resolved_agent_name:
-        parser.error("Use either --api-key/AGENTGRAM_API_KEY for hosted mode or --agent/AGENTGRAM_AGENT_NAME for local mode.")
+        parser.error("Use either --api-key/THREADGRAM_API_KEY for hosted mode or --agent/THREADGRAM_AGENT_NAME for local mode.")
     return resolved_api_key, resolved_agent_name
 
 
@@ -214,10 +214,10 @@ def _read_message_body(body: str | None, stdin: TextIO) -> str:
         return body.strip()
     is_tty = getattr(stdin, "isatty", lambda: False)
     if is_tty():
-        raise AgentGramAPIError("Message body is required. Pass --body or pipe the message on stdin.")
+        raise ThreadGramAPIError("Message body is required. Pass --body or pipe the message on stdin.")
     streamed = stdin.read().strip()
     if not streamed:
-        raise AgentGramAPIError("Message body is required. Pass --body or pipe the message on stdin.")
+        raise ThreadGramAPIError("Message body is required. Pass --body or pipe the message on stdin.")
     return streamed
 
 
@@ -232,14 +232,14 @@ async def _build_chat_client(
             parser.error("Human chat mode does not support --api-key. Use the local dashboard for hosted mode.")
         if args.agent:
             parser.error("Human chat mode does not support --agent. The local human operator is implicit.")
-        return AgentGramHumanLocalClient(
+        return ThreadGramHumanLocalClient(
             server_url=args.server_url,
             workspace=args.workspace,
             http_client=http_client,
         )
 
     api_key, agent_name = resolve_agent_auth(parser, args.api_key, args.agent)
-    return AgentGramBackendClient(
+    return ThreadGramBackendClient(
         server_url=args.server_url,
         api_key=api_key,
         agent_name=agent_name,
@@ -395,8 +395,8 @@ async def run_chat_command(
             return
 
         parser.error("Unknown chat command.")
-    except AgentGramAPIError as exc:
-        parser.exit(2, f"agentgram: error: {exc}\n")
+    except ThreadGramAPIError as exc:
+        parser.exit(2, f"threadgram: error: {exc}\n")
     finally:
         await client.aclose()
 

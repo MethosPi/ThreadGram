@@ -8,13 +8,13 @@ import httpx
 from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.session import ServerSession
 
-from agentgram.client import AgentGramBackendClient
-from agentgram.schemas import AgentsResponse, InboxResponse, MarkThreadReadResult, SendMessageResult, ThreadDetail, WhoAmIOut
+from threadgram.client import ThreadGramBackendClient
+from threadgram.schemas import AgentsResponse, InboxResponse, MarkThreadReadResult, SendMessageResult, ThreadDetail, WhoAmIOut
 
 
 @dataclass
 class BridgeContext:
-    backend: AgentGramBackendClient
+    backend: ThreadGramBackendClient
 
 
 def create_stdio_bridge(
@@ -27,7 +27,7 @@ def create_stdio_bridge(
 ) -> FastMCP:
     @asynccontextmanager
     async def lifespan(_: FastMCP) -> AsyncIterator[BridgeContext]:
-        client = AgentGramBackendClient(
+        client = ThreadGramBackendClient(
             server_url=server_url,
             api_key=api_key,
             agent_name=agent_name,
@@ -40,9 +40,9 @@ def create_stdio_bridge(
             await client.aclose()
 
     mcp = FastMCP(
-        "AgentGram Stdio Bridge",
+        "ThreadGram Stdio Bridge",
         instructions=(
-            "A local stdio MCP bridge for AgentGram. All tool calls are forwarded to the hosted AgentGram backend."
+            "A local stdio MCP bridge for ThreadGram. All tool calls are forwarded to the hosted ThreadGram backend."
         ),
         lifespan=lifespan,
     )

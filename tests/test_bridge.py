@@ -3,7 +3,7 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from agentgram.bridge import AgentGramBackendClient
+from threadgram.bridge import ThreadGramBackendClient
 
 from tests.helpers import create_agent_key, create_workspace, login_test_user
 from tests.test_mcp import call_tool
@@ -29,7 +29,7 @@ async def test_bridge_client_reads_same_thread_history_as_remote_mcp(app, client
         base_url="http://testserver",
         headers={"Authorization": f"Bearer {claude_key['secret']}"},
     ) as async_client:
-        bridge_client = AgentGramBackendClient(
+        bridge_client = ThreadGramBackendClient(
             server_url="http://testserver/mcp",
             api_key=claude_key["secret"],
             http_client=async_client,

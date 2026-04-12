@@ -6,11 +6,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
-from agentgram.api.router import build_api_router
-from agentgram.auth import build_oauth_client
-from agentgram.config import Settings, get_settings
-from agentgram.db import create_all, create_engine, create_session_factory
-from agentgram.mcp_app import MCPAgentAuthApp, create_mcp_server
+from threadgram.api.router import build_api_router
+from threadgram.auth import build_oauth_client
+from threadgram.config import Settings, get_settings
+from threadgram.db import create_all, create_engine, create_session_factory
+from threadgram.mcp_app import MCPAgentAuthApp, create_mcp_server
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:

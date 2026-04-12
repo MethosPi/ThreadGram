@@ -3,8 +3,8 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from agentgram.bridge import AgentGramBackendClient
-from agentgram.loop import run_reply_pass
+from threadgram.bridge import ThreadGramBackendClient
+from threadgram.loop import run_reply_pass
 
 from tests.helpers import create_agent_key, create_workspace, login_test_user, send_human_message
 
@@ -38,7 +38,7 @@ async def test_auto_reply_loop_handles_unread_threads(app, client):
         base_url="http://testserver",
         headers={"Authorization": f"Bearer {codex['secret']}"},
     ) as async_client:
-        backend = AgentGramBackendClient(
+        backend = ThreadGramBackendClient(
             server_url="http://testserver/mcp",
             api_key=codex["secret"],
             http_client=async_client,

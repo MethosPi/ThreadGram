@@ -9,18 +9,18 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_prefix="AGENTGRAM_",
+        env_prefix="THREADGRAM_",
         env_file=".env",
         extra="ignore",
     )
 
-    app_name: str = "AgentGram"
+    app_name: str = "ThreadGram"
     environment: str = "development"
     testing: bool = False
     local_mode: bool = True
 
     secret_key: str = "local-dev-secret"
-    database_url: str = "sqlite+aiosqlite:///./agentgram.db"
+    database_url: str = "sqlite+aiosqlite:///./threadgram.db"
 
     frontend_origin: str = "http://localhost:4173"
     public_api_base_url: str = "http://localhost:8000"
@@ -30,14 +30,14 @@ class Settings(BaseSettings):
     local_user_login: str = "local"
     local_agent_query_param: str = "agent"
     local_workspace_query_param: str = "workspace"
-    local_agent_header_name: str = "x-agentgram-agent"
-    local_workspace_header_name: str = "x-agentgram-workspace"
+    local_agent_header_name: str = "x-threadgram-agent"
+    local_workspace_header_name: str = "x-threadgram-workspace"
 
     github_client_id: str | None = None
     github_client_secret: str | None = None
     github_scope: str = "read:user user:email"
 
-    session_cookie_name: str = "agentgram_session"
+    session_cookie_name: str = "threadgram_session"
     session_https_only: bool = False
     session_same_site: str = "lax"
 

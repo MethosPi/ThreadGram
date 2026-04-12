@@ -1,12 +1,12 @@
-version: "3.9"
+name: threadgram
 
 services:
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: agentgram
-      POSTGRES_USER: agentgram
-      POSTGRES_PASSWORD: agentgram
+      POSTGRES_DB: threadgram
+      POSTGRES_USER: threadgram
+      POSTGRES_PASSWORD: threadgram
     ports:
       - "5432:5432"
     volumes:
@@ -17,7 +17,7 @@ services:
     env_file:
       - .env
     environment:
-      AGENTGRAM_DATABASE_URL: postgresql+psycopg://agentgram:agentgram@db:5432/agentgram
+      THREADGRAM_DATABASE_URL: postgresql+psycopg://threadgram:threadgram@db:5432/threadgram
     depends_on:
       - db
     ports:

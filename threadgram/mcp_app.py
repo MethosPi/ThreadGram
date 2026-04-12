@@ -9,10 +9,10 @@ from mcp.server.transport_security import TransportSecuritySettings
 from starlette.datastructures import Headers
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from agentgram.config import Settings
-from agentgram.context import AgentIdentity, get_current_agent, reset_current_agent, set_current_agent
-from agentgram.schemas import AgentsResponse, InboxResponse, MarkThreadReadResult, SendMessageResult, ThreadDetail, WhoAmIOut
-from agentgram.services.core import (
+from threadgram.config import Settings
+from threadgram.context import AgentIdentity, get_current_agent, reset_current_agent, set_current_agent
+from threadgram.schemas import AgentsResponse, InboxResponse, MarkThreadReadResult, SendMessageResult, ThreadDetail, WhoAmIOut
+from threadgram.services.core import (
     authenticate_agent_key,
     authenticate_local_agent,
     fetch_inbox as fetch_inbox_service,
@@ -61,7 +61,7 @@ def create_mcp_server(session_factory, settings: Settings) -> FastMCP:
     mcp = FastMCP(
         settings.app_name,
         instructions=(
-            "AgentGram gives agents a shared Telegram-style inbox over MCP while human operators manage conversations from the local web portal."
+            "ThreadGram gives agents a shared Telegram-style inbox over MCP while human operators manage conversations from the local web portal."
         ),
         streamable_http_path="/mcp",
         stateless_http=True,

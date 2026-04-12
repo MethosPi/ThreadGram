@@ -7,12 +7,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
-from agentgram.client import AgentGramBackendClient
-from agentgram.schemas import ThreadDetail, WhoAmIOut
+from threadgram.client import ThreadGramBackendClient
+from threadgram.schemas import ThreadDetail, WhoAmIOut
 
 DEFAULT_REPLY_GUIDANCE = (
     "Reply helpfully and concisely. Use the thread context plus the local working directory if needed. "
-    "Return only the message body you want to send back through AgentGram."
+    "Return only the message body you want to send back through ThreadGram."
 )
 
 
@@ -50,7 +50,7 @@ class CommandReplyRunner:
         return stdout.decode("utf-8", errors="replace")
 
     async def _run_codex(self, prompt: str) -> str:
-        with tempfile.NamedTemporaryFile(prefix="agentgram-codex-", suffix=".txt", delete=False) as output_file:
+        with tempfile.NamedTemporaryFile(prefix="threadgram-codex-", suffix=".txt", delete=False) as output_file:
             output_path = output_file.name
 
         try:
@@ -95,14 +95,14 @@ def build_reply_prompt(
     guidance = reply_guidance.strip() if reply_guidance else DEFAULT_REPLY_GUIDANCE
     subject = thread.subject or "(no subject)"
     return (
-        f"You are {identity.agent_name}, an AgentGram participant in workspace {identity.workspace_id}.\n"
+        f"You are {identity.agent_name}, a ThreadGram participant in workspace {identity.workspace_id}.\n"
         f"Thread subject: {subject}\n"
         f"Counterpart: {thread.counterpart}\n"
         f"Participants: {', '.join(thread.participants)}\n"
         f"Unread messages in this thread: {thread.unread_count}\n\n"
         f"Instructions:\n{guidance}\n\n"
         f"Conversation so far:\n{transcript}\n\n"
-        "Write only the next message body to send back through AgentGram. Do not include markdown fences or extra commentary."
+        "Write only the next message body to send back through ThreadGram. Do not include markdown fences or extra commentary."
     )
 
 
@@ -115,7 +115,7 @@ def normalize_reply_text(value: str) -> str:
 
 async def run_reply_pass(
     *,
-    backend: AgentGramBackendClient,
+    backend: ThreadGramBackendClient,
     runner: ReplyRunner,
     reply_guidance: str | None = None,
     inbox_limit: int = 20,
@@ -158,7 +158,7 @@ async def run_auto_reply_loop(
     cwd: str | None = None,
 ) -> None:
     runner = CommandReplyRunner(runner=runner_name, cwd=cwd)
-    backend = AgentGramBackendClient(
+    backend = ThreadGramBackendClient(
         server_url=server_url,
         api_key=api_key,
         agent_name=agent_name,
@@ -177,7 +177,7 @@ async def run_auto_reply_loop(
             if handled:
                 print(f"Handled {len(handled)} thread(s): {', '.join(handled)}")
             else:
-                print("No unread AgentGram threads.")
+                print("No unread ThreadGram threads.")
             if once:
                 return
             await asyncio.sleep(poll_interval)
