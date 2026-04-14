@@ -1,6 +1,8 @@
 .DS_Store
 .env
 .venv/
+docker-compose.override.yml
+docker-compose.override.yaml
 __pycache__/
 .pytest_cache/
 .coverage
