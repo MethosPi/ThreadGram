@@ -258,8 +258,11 @@ class ThreadGramHumanLocalClient(BaseAPIClient):
         payload = await self._request("GET", "/api/workspaces")
         return [WorkspaceOut.model_validate(item) for item in payload]
 
-    async def _create_workspace(self, name: str) -> WorkspaceDetail:
-        payload = await self._request("POST", "/api/workspaces", json={"name": name})
+    async def _create_workspace(self, name: str, *, slug: str | None = None) -> WorkspaceDetail:
+        body: dict[str, Any] = {"name": name}
+        if slug is not None:
+            body["slug"] = slug
+        payload = await self._request("POST", "/api/workspaces", json=body)
         return WorkspaceDetail.model_validate(payload)
 
     async def _get_workspace(self, workspace_id: str) -> WorkspaceDetail:
@@ -279,12 +282,8 @@ class ThreadGramHumanLocalClient(BaseAPIClient):
                 self._workspace_detail = await self._get_workspace(workspace.id)
                 return self._workspace_detail
 
-        created = await self._create_workspace(target_name if target_slug == session.default_local_workspace_slug else _titleize_slug(target_slug))
-        if created.slug != target_slug:
-            for workspace in await self._list_workspaces():
-                if workspace.slug == target_slug:
-                    self._workspace_detail = await self._get_workspace(workspace.id)
-                    return self._workspace_detail
+        created_name = target_name if target_slug == session.default_local_workspace_slug else _titleize_slug(target_slug)
+        created = await self._create_workspace(created_name, slug=target_slug)
         self._workspace_detail = created
         return created
 

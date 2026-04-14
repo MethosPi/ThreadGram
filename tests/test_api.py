@@ -87,3 +87,26 @@ async def test_human_identity_can_chat_from_owner_dashboard(client):
 
     assert owner_thread["human_participant"] is True
     assert owner_thread["messages"][-1]["body"] == "Review complete."
+
+
+@pytest.mark.asyncio
+async def test_create_workspace_with_explicit_slug_is_idempotent(client):
+    await login_test_user(client)
+
+    first = await client.post("/api/workspaces", json={"name": "Local Control Room", "slug": "local"})
+    first.raise_for_status()
+    first_payload = first.json()
+    assert first_payload["slug"] == "local"
+    assert first_payload["name"] == "Local Control Room"
+
+    second = await client.post("/api/workspaces", json={"name": "Local Control Room", "slug": "local"})
+    second.raise_for_status()
+    second_payload = second.json()
+    assert second_payload["id"] == first_payload["id"]
+    assert second_payload["slug"] == "local"
+
+    legacy = await client.post("/api/workspaces", json={"name": "Other Room"})
+    legacy.raise_for_status()
+    legacy_payload = legacy.json()
+    assert legacy_payload["slug"] == "other-room"
+    assert legacy_payload["id"] != first_payload["id"]

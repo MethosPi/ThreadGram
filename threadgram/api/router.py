@@ -33,6 +33,7 @@ from threadgram.services.core import (
     ensure_local_user,
     fetch_inbox,
     get_or_create_user_from_github,
+    get_or_create_workspace_for_slug,
     get_thread,
     get_workspace_for_user,
     get_workspace_thread_for_owner,
@@ -138,7 +139,16 @@ def build_api_router() -> APIRouter:
         user: User = Depends(require_user),
         session: AsyncSession = Depends(get_db_session),
     ):
-        workspace = await create_workspace(session, owner_user_id=user.id, name=payload.name)
+        if payload.slug is not None:
+            workspace = await get_or_create_workspace_for_slug(
+                session,
+                owner_user_id=user.id,
+                slug=payload.slug,
+                default_slug=payload.slug,
+                default_name=payload.name,
+            )
+        else:
+            workspace = await create_workspace(session, owner_user_id=user.id, name=payload.name)
         return await build_workspace_detail(session, workspace)
 
     @router.get("/workspaces/{workspace_id}", response_model=WorkspaceDetail)
