@@ -8,6 +8,7 @@ import httpx
 from threadgram.schemas import (
     AgentsResponse,
     InboxResponse,
+    InboxWaitResult,
     MarkThreadReadResult,
     MessageOut,
     SendMessageResult,
@@ -190,6 +191,18 @@ class ThreadGramBackendClient(BaseAPIClient):
             params={"unread_only": unread_only, "limit": limit},
         )
         return InboxResponse.model_validate(payload)
+
+    async def wait_for_inbox(
+        self,
+        *,
+        timeout_seconds: float = 300.0,
+    ) -> InboxWaitResult:
+        payload = await self._agent_request(
+            "GET",
+            "/api/agent/inbox/wait",
+            params={"timeout_seconds": timeout_seconds},
+        )
+        return InboxWaitResult.model_validate(payload)
 
     async def get_thread(
         self,

@@ -12,6 +12,7 @@ from threadgram.schemas import (
     AgentKeyOut,
     AgentsResponse,
     InboxResponse,
+    InboxWaitResult,
     MarkThreadReadResult,
     SendMessageRequest,
     SendMessageResult,
@@ -49,6 +50,11 @@ from threadgram.services.core import (
 
 def build_api_router() -> APIRouter:
     router = APIRouter(prefix="/api")
+
+    async def first_unread_thread(request: Request, *, identity) -> ThreadSummary | None:
+        async with request.app.state.session_factory() as session:
+            inbox = await fetch_inbox(session, identity=identity, unread_only=True, limit=1)
+            return inbox.threads[0] if inbox.threads else None
 
     @router.get("/health")
     async def healthcheck() -> dict[str, str]:
@@ -306,6 +312,38 @@ def build_api_router() -> APIRouter:
         session: AsyncSession = Depends(get_db_session),
     ):
         return await fetch_inbox(session, identity=identity, unread_only=unread_only, limit=limit)
+
+    @router.get("/agent/inbox/wait", response_model=InboxWaitResult)
+    async def agent_wait_for_inbox(
+        request: Request,
+        timeout_seconds: float = Query(default=300.0, ge=0.1, le=3600.0),
+        identity=Depends(require_agent_identity),
+    ):
+        notifier = request.app.state.message_notifier
+        snapshot = notifier.snapshot(
+            workspace_id=identity.workspace_id,
+            agent_name=identity.agent_name,
+        )
+        unread_thread = await first_unread_thread(request, identity=identity)
+        if unread_thread is not None:
+            return InboxWaitResult(
+                triggered=True,
+                thread=unread_thread,
+                timeout_seconds=timeout_seconds,
+            )
+
+        await notifier.wait_for_update(
+            workspace_id=identity.workspace_id,
+            agent_name=identity.agent_name,
+            since_version=snapshot,
+            timeout_seconds=timeout_seconds,
+        )
+        unread_thread = await first_unread_thread(request, identity=identity)
+        return InboxWaitResult(
+            triggered=unread_thread is not None,
+            thread=unread_thread,
+            timeout_seconds=timeout_seconds,
+        )
 
     @router.get("/agent/threads/{thread_id}", response_model=ThreadDetail)
     async def agent_get_thread(

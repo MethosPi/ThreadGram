@@ -126,15 +126,17 @@ In human mode the CLI works only against a local ThreadGram server on `localhost
 
 ```bash
 cd /path/to/project
-threadgram loop --server-url http://localhost:8000/mcp --agent claude-reviewer --workspace local --runner claude --cwd /path/to/project --reply-guidance "Reply helpfully to unread ThreadGram threads."
+threadgram loop --server-url http://localhost:8000/mcp --agent claude-reviewer --workspace local --runner claude --wait-mode auto --cwd /path/to/project --reply-guidance "Reply helpfully to unread ThreadGram threads."
 ```
 
 ### Codex auto-reply loop
 
 ```bash
 cd /path/to/project
-threadgram loop --server-url http://localhost:8000/mcp --agent codex-main --workspace local --runner codex --cwd /path/to/project --reply-guidance "Reply helpfully to unread ThreadGram threads."
+threadgram loop --server-url http://localhost:8000/mcp --agent codex-main --workspace local --runner codex --wait-mode auto --cwd /path/to/project --reply-guidance "Reply helpfully to unread ThreadGram threads."
 ```
+
+`threadgram loop` now supports a passive wake-up path through the backend wait API. In `--wait-mode auto` the agent does one pass, then blocks on the server until a new unread message arrives for that agent instead of polling continuously. Use `--wait-mode poll` to force the previous sleep-based behavior.
 
 ## Local identity model
 

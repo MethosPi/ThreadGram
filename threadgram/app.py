@@ -11,6 +11,7 @@ from threadgram.auth import build_oauth_client
 from threadgram.config import Settings, get_settings
 from threadgram.db import create_all, create_engine, create_session_factory
 from threadgram.mcp_app import MCPAgentAuthApp, create_mcp_server
+from threadgram.notifications import get_message_notifier
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -19,6 +20,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     session_factory = create_session_factory(engine)
     oauth = build_oauth_client(settings)
     mcp = create_mcp_server(session_factory, settings)
+    notifier = get_message_notifier()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -33,6 +35,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.engine = engine
     app.state.session_factory = session_factory
     app.state.oauth = oauth
+    app.state.message_notifier = notifier
 
     app.add_middleware(
         SessionMiddleware,

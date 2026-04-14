@@ -132,6 +132,12 @@ class InboxResponse(BaseModel):
     threads: list[ThreadSummary]
 
 
+class InboxWaitResult(BaseModel):
+    triggered: bool
+    thread: ThreadSummary | None = None
+    timeout_seconds: float
+
+
 class TestingLoginRequest(BaseModel):
     github_login: str = Field(min_length=1, max_length=255)
     github_user_id: str | None = None

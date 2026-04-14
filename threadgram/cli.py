@@ -41,6 +41,18 @@ def build_parser() -> argparse.ArgumentParser:
     loop.add_argument("--workspace", help="Local-mode workspace slug. Defaults to the server's local workspace slug.")
     loop.add_argument("--runner", choices=["claude", "codex"], required=True, help="Local agent CLI to use for generating replies.")
     loop.add_argument("--poll-interval", default=15.0, type=float, help="Seconds between inbox polls.")
+    loop.add_argument(
+        "--wait-mode",
+        choices=["auto", "wait", "poll"],
+        default="auto",
+        help="How the loop idles between passes: auto tries the backend wait API first, wait requires it, poll sleeps locally.",
+    )
+    loop.add_argument(
+        "--wait-timeout",
+        default=300.0,
+        type=float,
+        help="Maximum seconds to keep the backend wait request open before reconnecting.",
+    )
     loop.add_argument("--reply-guidance", help="Extra instructions for how the local agent should answer unread threads.")
     loop.add_argument("--inbox-limit", default=20, type=int, help="Unread thread batch size to fetch each pass.")
     loop.add_argument("--max-threads-per-pass", default=5, type=int, help="Maximum unread threads to process per poll.")
@@ -421,6 +433,8 @@ async def run_cli_async(
             workspace=args.workspace,
             runner_name=args.runner,
             poll_interval=args.poll_interval,
+            wait_mode=args.wait_mode,
+            wait_timeout=args.wait_timeout,
             reply_guidance=args.reply_guidance,
             inbox_limit=args.inbox_limit,
             max_threads_per_pass=args.max_threads_per_pass,

@@ -17,7 +17,7 @@ const els = {
   apiBase: document.querySelector("#api-base"),
   saveApiBase: document.querySelector("#save-api-base"),
   sessionBadge: document.querySelector("#session-badge"),
-  sessionContent: document.querySelector("#session-content"),
+  sessionIdentity: document.querySelector("#session-identity"),
   workspaceForm: document.querySelector("#workspace-form"),
   workspaceName: document.querySelector("#workspace-name"),
   workspaceList: document.querySelector("#workspace-list"),
@@ -156,41 +156,31 @@ function syncHumanComposer() {
 }
 
 function renderSession() {
+  const identity = els.sessionIdentity;
+  if (!identity) return;
+
   if (state.session?.local_mode && state.session?.authenticated) {
     const user = state.session.user;
-    els.sessionContent.innerHTML = `
-      <div class="workspace-item">
-        <strong>@${escapeHtml(user.github_login)}</strong>
-        <div class="muted">Mode: Local-first, no keys required on localhost</div>
-        <div class="muted">API: ${escapeHtml(state.session.public_api_base_url)}</div>
-        <div class="muted">Dashboard messages are sent as <strong>human</strong> inside each workspace.</div>
-      </div>
-    `;
+    identity.textContent = `@${user.github_login} · local`;
+    identity.classList.remove("hidden");
     setStatus("Local mode");
     return;
   }
 
   if (!state.session?.authenticated) {
+    identity.classList.add("hidden");
     const loginHref = state.apiBase
       ? `${state.apiBase}/api/auth/github/login?return_to=${encodeURIComponent(window.location.href)}`
       : "#";
-    els.sessionContent.innerHTML = `
-      <p class="muted">Sign in with GitHub to create workspaces, issue keys for agents, and join each workspace yourself as the built-in human participant.</p>
-      <a class="button primary" href="${loginHref}">Sign in with GitHub</a>
-    `;
+    identity.innerHTML = `<a class="identity-link" href="${loginHref}">Sign in with GitHub</a>`;
+    identity.classList.remove("hidden");
     setStatus("Signed out", "alert");
     return;
   }
 
   const user = state.session.user;
-  els.sessionContent.innerHTML = `
-    <div class="workspace-item">
-      <strong>@${escapeHtml(user.github_login)}</strong>
-      <div class="muted">API: ${escapeHtml(state.session.public_api_base_url)}</div>
-      <div class="muted">Dashboard messages are sent as <strong>human</strong> inside each workspace.</div>
-      <button id="logout-button" class="button ghost" type="button">Log out</button>
-    </div>
-  `;
+  identity.innerHTML = `@${escapeHtml(user.github_login)} <button id="logout-button" class="identity-logout" type="button" title="Log out">×</button>`;
+  identity.classList.remove("hidden");
   document.querySelector("#logout-button")?.addEventListener("click", logout);
   setStatus("Signed in");
 }
@@ -754,8 +744,6 @@ els.humanMessageForm.addEventListener("submit", sendHumanMessageSubmit);
 els.humanResetButton.addEventListener("click", () => resetHumanComposer({ keepTarget: false }));
 
 bootstrap().catch((error) => {
-  setStatus("Configuration needed", "alert");
-  els.sessionContent.innerHTML = `<div class="workspace-item"><strong>Portal error</strong><div class="muted">${escapeHtml(
-    error.message,
-  )}</div></div>`;
+  setStatus("Not connected", "alert");
+  console.error("ThreadGram bootstrap failed", error);
 });

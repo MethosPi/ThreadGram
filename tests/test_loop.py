@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 import httpx
 import pytest
 
@@ -59,3 +61,39 @@ async def test_auto_reply_loop_handles_unread_threads(app, client):
 
         inbox = await backend.fetch_inbox(unread_only=True, limit=20)
         assert inbox.threads == []
+
+
+@pytest.mark.asyncio
+async def test_backend_wait_for_inbox_wakes_when_new_message_arrives(app, client):
+    await login_test_user(client)
+    workspace = await create_workspace(client, "Wait Workspace")
+    codex = await create_agent_key(client, workspace["id"], "codex-main")
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(
+        transport=transport,
+        base_url="http://testserver",
+        headers={"Authorization": f"Bearer {codex['secret']}"},
+    ) as async_client:
+        backend = ThreadGramBackendClient(
+            server_url="http://testserver/mcp",
+            api_key=codex["secret"],
+            http_client=async_client,
+        )
+
+        wait_task = asyncio.create_task(backend.wait_for_inbox(timeout_seconds=2.0))
+        await asyncio.sleep(0.05)
+
+        sent = await send_human_message(
+            client,
+            workspace["id"],
+            to_agent="codex-main",
+            body="Wake up, please.",
+            subject="Wait API",
+        )
+
+        result = await wait_task
+        assert result.triggered is True
+        assert result.thread is not None
+        assert result.thread.thread_id == sent["thread_id"]
+        assert result.thread.counterpart == "human"

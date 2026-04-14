@@ -12,6 +12,7 @@ from sqlalchemy.orm import selectinload
 
 from threadgram.context import AgentIdentity
 from threadgram.models import AgentKey, Message, Thread, ThreadAgentState, User, Workspace
+from threadgram.notifications import get_message_notifier
 from threadgram.schemas import (
     AgentSummary,
     InboxResponse,
@@ -502,6 +503,10 @@ async def send_message(
     )
 
     await session.commit()
+    await get_message_notifier().publish(
+        workspace_id=identity.workspace_id,
+        agent_name=recipient,
+    )
     return SendMessageResult(
         thread_id=thread.id,
         message=MessageOut(

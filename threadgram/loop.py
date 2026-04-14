@@ -5,9 +5,9 @@ import os
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import Literal, Protocol
 
-from threadgram.client import ThreadGramBackendClient
+from threadgram.client import ThreadGramAPIError, ThreadGramBackendClient
 from threadgram.schemas import ThreadDetail, WhoAmIOut
 
 DEFAULT_REPLY_GUIDANCE = (
@@ -150,6 +150,8 @@ async def run_auto_reply_loop(
     workspace: str | None,
     runner_name: str,
     poll_interval: float,
+    wait_mode: Literal["auto", "wait", "poll"] = "auto",
+    wait_timeout: float = 300.0,
     reply_guidance: str | None = None,
     inbox_limit: int = 20,
     max_threads_per_pass: int = 5,
@@ -165,6 +167,7 @@ async def run_auto_reply_loop(
         workspace=workspace,
     )
     try:
+        use_wait_api = wait_mode in {"auto", "wait"}
         while True:
             handled = await run_reply_pass(
                 backend=backend,
@@ -176,10 +179,20 @@ async def run_auto_reply_loop(
             )
             if handled:
                 print(f"Handled {len(handled)} thread(s): {', '.join(handled)}")
-            else:
+            elif once or not use_wait_api:
                 print("No unread ThreadGram threads.")
             if once:
                 return
+            if use_wait_api:
+                try:
+                    await backend.wait_for_inbox(timeout_seconds=wait_timeout)
+                    continue
+                except ThreadGramAPIError as exc:
+                    if wait_mode == "auto" and exc.status_code in {404, 405, 501}:
+                        use_wait_api = False
+                        print("Inbox wait API unavailable; falling back to polling.")
+                    else:
+                        raise
             await asyncio.sleep(poll_interval)
     finally:
         await backend.aclose()
